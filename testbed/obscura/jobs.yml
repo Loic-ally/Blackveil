@@ -1,0 +1,3 @@
+job: nightly-backup
+paths:
+  - /var/www
