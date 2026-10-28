@@ -4,4 +4,5 @@ set -euo pipefail
 cd "$(dirname "$0")"
 docker build -t metsec-obscura .
 echo "Obscura on http://127.0.0.1:5003  (Ctrl-C to stop)"
+docker rm -f metsec-obscura >/dev/null 2>&1 || true
 docker run --rm -p 127.0.0.1:5003:5000 --name metsec-obscura metsec-obscura
