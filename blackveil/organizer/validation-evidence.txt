@@ -1,0 +1,86 @@
+/tmp/blackveil-reset-validation.log
+== fresh deployment
+PASS: challenge stage 03 — signup → stage 01 → stage 02 → stage 03; platform-operator receipt reconstructed and hash-verified, no privilege gained.
+PASS: challenge stage 04 — reporting-identity enrollment via a foreign installation receipt; svc:aether-reporting enrolled, legacy-archive opened, no role gained.
+PASS: challenge stage 05 — operator recovery requires Stage 03 receipt + Stage 04 enrollment, elevates once to system_admin, and opens the terminal authz gate.
+PASS: challenge stage 06 — the elevated player opens the restricted non-root Linux operator shell through the terminal, with no SQL grant.
+PASS: challenge stage 07 — operator discovers the agent protocol and the retained worker-signed capture, without the signing key or tenant map.
+PASS: challenge stage 08 — substituting only legacy_tenant_no on a valid worker signature returns a foreign bounded archive (identity confusion).
+PASS: patched stage 08 — the patched agent refuses the number substitution (signature covers the number and timestamp).
+PASS: patched stage 03 resolves only the caller's canonical number; no foreign migration record or receipt is disclosed.
+PASS: patched stage 04 binds the enrollment receipt's installation to the caller and refuses a foreign receipt.
+PASS: patched stage 05 binds the platform-operator receipt to the destination workspace and refuses a foreign receipt.
+OK: full chain verified — Stages 01-08 (challenge) through the real player interfaces, plus the patched 03/04/05/08 regressions.
+== required guest unavailable
+PASS: challenge stage 03 — signup → stage 01 → stage 02 → stage 03; platform-operator receipt reconstructed and hash-verified, no privilege gained.
+PASS: challenge stage 04 — reporting-identity enrollment via a foreign installation receipt; svc:aether-reporting enrolled, legacy-archive opened, no role gained.
+PASS: challenge stage 05 — operator recovery requires Stage 03 receipt + Stage 04 enrollment, elevates once to system_admin, and opens the terminal authz gate.
+AssertionError: full-chain verification requires the Linux guest, but the terminal returned 503. Stages 06, 07 and 08 were NOT executed. Start the guest with `make vm-up` and re-run, or run `make web-chain-verify` for the application-only (Stages 01-05) scope. Refusing to report full-chain success.
+make chain-verify (guest unavailable): exit 2
+PASS: fresh deployment — Stages 01-08 solvable; identity material provisioned.
+== guest restart
+PASS: challenge stage 03 — signup → stage 01 → stage 02 → stage 03; platform-operator receipt reconstructed and hash-verified, no privilege gained.
+PASS: challenge stage 04 — reporting-identity enrollment via a foreign installation receipt; svc:aether-reporting enrolled, legacy-archive opened, no role gained.
+PASS: challenge stage 05 — operator recovery requires Stage 03 receipt + Stage 04 enrollment, elevates once to system_admin, and opens the terminal authz gate.
+PASS: challenge stage 06 — the elevated player opens the restricted non-root Linux operator shell through the terminal, with no SQL grant.
+PASS: challenge stage 07 — operator discovers the agent protocol and the retained worker-signed capture, without the signing key or tenant map.
+PASS: challenge stage 08 — substituting only legacy_tenant_no on a valid worker signature returns a foreign bounded archive (identity confusion).
+PASS: patched stage 08 — the patched agent refuses the number substitution (signature covers the number and timestamp).
+PASS: patched stage 03 resolves only the caller's canonical number; no foreign migration record or receipt is disclosed.
+PASS: patched stage 04 binds the enrollment receipt's installation to the caller and refuses a foreign receipt.
+PASS: patched stage 05 binds the platform-operator receipt to the destination workspace and refuses a foreign receipt.
+OK: full chain verified — Stages 01-08 (challenge) through the real player interfaces, plus the patched 03/04/05/08 regressions.
+PASS: guest restart — both guests rebooted; operator key, pinned host key, capture and application data preserved; chain solvable.
+== agent restart
+PASS: HTTPS archive delivery, provenance and tenant isolation; expired report lease recovers after worker interruption.
+PASS: challenge stage 03 — signup → stage 01 → stage 02 → stage 03; platform-operator receipt reconstructed and hash-verified, no privilege gained.
+PASS: challenge stage 04 — reporting-identity enrollment via a foreign installation receipt; svc:aether-reporting enrolled, legacy-archive opened, no role gained.
+PASS: challenge stage 05 — operator recovery requires Stage 03 receipt + Stage 04 enrollment, elevates once to system_admin, and opens the terminal authz gate.
+PASS: challenge stage 06 — the elevated player opens the restricted non-root Linux operator shell through the terminal, with no SQL grant.
+PASS: challenge stage 07 — operator discovers the agent protocol and the retained worker-signed capture, without the signing key or tenant map.
+PASS: challenge stage 08 — substituting only legacy_tenant_no on a valid worker signature returns a foreign bounded archive (identity confusion).
+PASS: patched stage 08 — the patched agent refuses the number substitution (signature covers the number and timestamp).
+PASS: patched stage 03 resolves only the caller's canonical number; no foreign migration record or receipt is disclosed.
+PASS: patched stage 04 binds the enrollment receipt's installation to the caller and refuses a foreign receipt.
+PASS: patched stage 05 binds the platform-operator receipt to the destination workspace and refuses a foreign receipt.
+OK: full chain verified — Stages 01-08 (challenge) through the real player interfaces, plus the patched 03/04/05/08 regressions.
+PASS: agent restart — new agent invocation, patched guest untouched, worker archive delivery recovers, chain solvable.
+== VM reset
+PASS: challenge stage 03 — signup → stage 01 → stage 02 → stage 03; platform-operator receipt reconstructed and hash-verified, no privilege gained.
+PASS: challenge stage 04 — reporting-identity enrollment via a foreign installation receipt; svc:aether-reporting enrolled, legacy-archive opened, no role gained.
+PASS: challenge stage 05 — operator recovery requires Stage 03 receipt + Stage 04 enrollment, elevates once to system_admin, and opens the terminal authz gate.
+PASS: challenge stage 06 — the elevated player opens the restricted non-root Linux operator shell through the terminal, with no SQL grant.
+PASS: challenge stage 07 — operator discovers the agent protocol and the retained worker-signed capture, without the signing key or tenant map.
+PASS: challenge stage 08 — substituting only legacy_tenant_no on a valid worker signature returns a foreign bounded archive (identity confusion).
+PASS: patched stage 08 — the patched agent refuses the number substitution (signature covers the number and timestamp).
+PASS: patched stage 03 resolves only the caller's canonical number; no foreign migration record or receipt is disclosed.
+PASS: patched stage 04 binds the enrollment receipt's installation to the caller and refuses a foreign receipt.
+PASS: patched stage 05 binds the platform-operator receipt to the destination workspace and refuses a foreign receipt.
+OK: full chain verified — Stages 01-08 (challenge) through the real player interfaces, plus the patched 03/04/05/08 regressions.
+PASS: VM reset — guest keys, host keys and captures regenerated; application data preserved; chain solvable.
+== full environment reset
+PASS: challenge stage 03 — signup → stage 01 → stage 02 → stage 03; platform-operator receipt reconstructed and hash-verified, no privilege gained.
+PASS: challenge stage 04 — reporting-identity enrollment via a foreign installation receipt; svc:aether-reporting enrolled, legacy-archive opened, no role gained.
+PASS: challenge stage 05 — operator recovery requires Stage 03 receipt + Stage 04 enrollment, elevates once to system_admin, and opens the terminal authz gate.
+PASS: challenge stage 06 — the elevated player opens the restricted non-root Linux operator shell through the terminal, with no SQL grant.
+PASS: challenge stage 07 — operator discovers the agent protocol and the retained worker-signed capture, without the signing key or tenant map.
+PASS: challenge stage 08 — substituting only legacy_tenant_no on a valid worker signature returns a foreign bounded archive (identity confusion).
+PASS: patched stage 08 — the patched agent refuses the number substitution (signature covers the number and timestamp).
+PASS: patched stage 03 resolves only the caller's canonical number; no foreign migration record or receipt is disclosed.
+PASS: patched stage 04 binds the enrollment receipt's installation to the caller and refuses a foreign receipt.
+PASS: patched stage 05 binds the platform-operator receipt to the destination workspace and refuses a foreign receipt.
+OK: full chain verified — Stages 01-08 (challenge) through the real player interfaces, plus the patched 03/04/05/08 regressions.
+PASS: full reset — database receipts, users, guest keys and captures regenerated; .env secrets preserved; chain solvable.
+OK: reset/restart verification passed in a disposable environment.
+/tmp/blackveil-chain-final.log
+PASS: challenge stage 03 — signup → stage 01 → stage 02 → stage 03; platform-operator receipt reconstructed and hash-verified, no privilege gained.
+PASS: challenge stage 04 — reporting-identity enrollment via a foreign installation receipt; svc:aether-reporting enrolled, legacy-archive opened, no role gained.
+PASS: challenge stage 05 — operator recovery requires Stage 03 receipt + Stage 04 enrollment, elevates once to system_admin, and opens the terminal authz gate.
+PASS: challenge stage 06 — the elevated player opens the restricted non-root Linux operator shell through the terminal, with no SQL grant.
+PASS: challenge stage 07 — operator discovers the agent protocol and the retained worker-signed capture, without the signing key or tenant map.
+PASS: challenge stage 08 — substituting only legacy_tenant_no on a valid worker signature returns a foreign bounded archive (identity confusion).
+PASS: patched stage 08 — the patched agent refuses the number substitution (signature covers the number and timestamp).
+PASS: patched stage 03 resolves only the caller's canonical number; no foreign migration record or receipt is disclosed.
+PASS: patched stage 04 binds the enrollment receipt's installation to the caller and refuses a foreign receipt.
+PASS: patched stage 05 binds the platform-operator receipt to the destination workspace and refuses a foreign receipt.
+OK: full chain verified — Stages 01-08 (challenge) through the real player interfaces, plus the patched 03/04/05/08 regressions.

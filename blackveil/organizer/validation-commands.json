@@ -1,0 +1,67 @@
+[
+  {
+    "command": "docker compose --env-file .env -f compose.yaml config --quiet",
+    "exit_code": 0,
+    "log": "/tmp/blackveil-check-0.log"
+  },
+  {
+    "command": "make network-check",
+    "exit_code": 0,
+    "log": "/tmp/blackveil-check-1.log"
+  },
+  {
+    "command": "python3 scripts/smoke.py",
+    "exit_code": 0,
+    "log": "/tmp/blackveil-check-2.log"
+  },
+  {
+    "command": "make team-verify",
+    "exit_code": 0,
+    "log": "/tmp/blackveil-check-3.log"
+  },
+  {
+    "command": "make legacy-verify",
+    "exit_code": 0,
+    "log": "/tmp/blackveil-check-4.log"
+  },
+  {
+    "command": "make recovery-verify",
+    "exit_code": 0,
+    "log": "/tmp/blackveil-check-5.log"
+  },
+  {
+    "command": "make db-roles-verify",
+    "exit_code": 0,
+    "log": "/tmp/blackveil-check-6.log"
+  },
+  {
+    "command": "make worker-verify",
+    "exit_code": 0,
+    "log": "/tmp/blackveil-check-7.log"
+  },
+  {
+    "command": "make fencing-verify",
+    "exit_code": 0,
+    "log": "/tmp/blackveil-check-8.log"
+  },
+  {
+    "command": "python3 scripts/verify-lifecycle.py --restart-app",
+    "exit_code": 0,
+    "log": "/tmp/blackveil-check-9.log"
+  },
+  {
+    "command": "make vm-verify",
+    "exit_code": 0,
+    "log": "/tmp/blackveil-check-10.log"
+  },
+  {
+    "command": "make web-chain-verify",
+    "exit_code": 0,
+    "log": "/tmp/blackveil-check-11.log"
+  },
+  {
+    "command": "make chain-verify",
+    "exit_code": 2,
+    "log": "/tmp/blackveil-check-12.log"
+  }
+]
