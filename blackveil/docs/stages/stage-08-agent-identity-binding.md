@@ -96,6 +96,19 @@ The live worker verification also queues archive reports through authenticated
 HTTPS, checks archive CSV and audit/notification completion, and confirms an
 unenrolled tenant cannot queue the report or download another tenant's result.
 
+**Replay and timestamp protection (patched)**
+
+The envelope carries an `issued_at` field. Challenge mode leaves it unsigned (as
+with the numeric selector), so a captured envelope replays indefinitely and a
+substituted number is accepted. Patched mode signs `issued_at` and
+`legacy_tenant_no` as part of the projection, rejects an envelope whose
+`issued_at` is more than 120 seconds from the guest clock, and rejects a
+signature already served within that window (compared case-normalized). The
+`accept_once` cache is process-local; this is sufficient here because the
+`operator` cannot restart the agent and a per-connection panic does not restart
+the process. `vm/verify-agent.py` asserts the patched agent rejects a replayed
+(case-flipped) signature and an expired (`issued_at` 600s old) envelope.
+
 **Remediation**
 
 Sign a canonical, versioned representation of every authorization field; derive

@@ -6,10 +6,12 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestArchiveWorkerProtocol(t *testing.T) {
@@ -29,7 +31,10 @@ func TestArchiveWorkerProtocol(t *testing.T) {
 					}
 					projection := "job-1\nsvc:aether-reporting\n4f3e2d1c-0b9a-4876-9d5c-4b3a29180716"
 					if mode == "patched" {
-						projection += "\n4101"
+						if time.Since(time.Unix(e.IssuedAt, 0)).Abs() > time.Minute {
+							t.Error("envelope issue time missing")
+						}
+						projection += fmt.Sprintf("\n4101\n%d", e.IssuedAt)
 					}
 					decoded, _ := hex.DecodeString(key)
 					mac := hmac.New(sha256.New, decoded)

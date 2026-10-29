@@ -6,7 +6,9 @@ use std::fs;
 use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
 use std::path::Path;
+use std::sync::{Arc, Mutex};
 use std::thread;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 type HmacSha256 = Hmac<Sha256>;
 
@@ -15,6 +17,10 @@ const ARCHIVE_DIR: &str = "/var/lib/aether-agent";
 const KEY_PATH: &str = "/etc/aether-agent/worker.key";
 const PRINCIPAL: &str = "svc:aether-reporting";
 const BUILD_ID: &str = "agent/1.4.2-migration-protocol";
+// Accepted clock difference between worker and guest, in seconds.
+const REPLAY_WINDOW_SECS: u64 = 120;
+
+type SeenEnvelopes = Arc<Mutex<HashMap<String, u64>>>;
 
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -23,6 +29,8 @@ struct Envelope {
     principal: String,
     tenant_uuid: String,
     legacy_tenant_no: u64,
+    #[serde(default)]
+    issued_at: u64,
     signature: String,
 }
 
@@ -44,6 +52,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         return Err("worker key must contain at least 32 bytes of hexadecimal".into());
     }
     let tenants = load_tenant_map(MAP_PATH)?;
+    let seen: SeenEnvelopes = Arc::default();
     let listener = TcpListener::bind("0.0.0.0:8080")?;
     eprintln!("{BUILD_ID} listening on 0.0.0.0:8080 ({mode})");
     for stream in listener.incoming() {
@@ -52,7 +61,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let mode = mode.clone();
                 let key = key.clone();
                 let tenants = tenants.clone();
-                thread::spawn(move || handle(stream, &mode, &key, &tenants));
+                let seen = seen.clone();
+                thread::spawn(move || handle(stream, &mode, &key, &tenants, &seen));
             }
             Err(error) => eprintln!("agent listener: {error}"),
         }
@@ -76,7 +86,7 @@ fn load_tenant_map(path: &str) -> Result<HashMap<String, u64>, Box<dyn std::erro
     Ok(tenants)
 }
 
-fn handle(mut stream: TcpStream, mode: &str, key: &str, tenants: &HashMap<String, u64>) {
+fn handle(mut stream: TcpStream, mode: &str, key: &str, tenants: &HashMap<String, u64>, seen: &SeenEnvelopes) {
     let _ = stream.set_read_timeout(Some(std::time::Duration::from_secs(3)));
     let request = match read_request(&mut stream) {
         Ok(request) => request,
@@ -87,14 +97,14 @@ fn handle(mut stream: TcpStream, mode: &str, key: &str, tenants: &HashMap<String
         ("GET", "/healthz") => respond(&mut stream, 200, serde_json::json!({"status":"ok","agent":BUILD_ID})),
         ("GET", "/v1/build") => respond(&mut stream, 200, serde_json::json!({"service":BUILD_ID,"protocol":"legacy-envelope/1"})),
         ("POST", "/v1/legacy/archive") => match serde_json::from_slice::<Envelope>(&body) {
-            Ok(envelope) => serve_archive(&mut stream, mode, key, tenants, &envelope),
+            Ok(envelope) => serve_archive(&mut stream, mode, key, tenants, seen, &envelope),
             Err(_) => respond(&mut stream, 400, serde_json::json!({"error":"invalid envelope"})),
         },
         _ => respond(&mut stream, 404, serde_json::json!({"error":"not found"})),
     }
 }
 
-fn serve_archive(stream: &mut TcpStream, mode: &str, key: &str, tenants: &HashMap<String, u64>, envelope: &Envelope) {
+fn serve_archive(stream: &mut TcpStream, mode: &str, key: &str, tenants: &HashMap<String, u64>, seen: &SeenEnvelopes, envelope: &Envelope) {
     if envelope.principal != PRINCIPAL || !is_uuid(&envelope.tenant_uuid) || !is_safe_job_id(&envelope.job_id) {
         return respond(stream, 403, serde_json::json!({"error":"service identity rejected"}));
     }
@@ -108,6 +118,9 @@ fn serve_archive(stream: &mut TcpStream, mode: &str, key: &str, tenants: &HashMa
     }
     if mode == "patched" && envelope.legacy_tenant_no != canonical {
         return respond(stream, 403, serde_json::json!({"error":"tenant identity mismatch"}));
+    }
+    if mode == "patched" && !accept_once(seen, envelope) {
+        return respond(stream, 403, serde_json::json!({"error":"envelope expired or replayed"}));
     }
     let selected = if mode == "challenge" { envelope.legacy_tenant_no } else { canonical };
     let archive_path = format!("{ARCHIVE_DIR}/archive-{selected}.json");
@@ -133,10 +146,23 @@ fn serve_archive(stream: &mut TcpStream, mode: &str, key: &str, tenants: &HashMa
 fn signing_bytes(envelope: &Envelope, include_legacy: bool) -> Vec<u8> {
     let base = format!("{}\n{}\n{}", envelope.job_id, envelope.principal, envelope.tenant_uuid);
     if include_legacy {
-        format!("{base}\n{}", envelope.legacy_tenant_no).into_bytes()
+        format!("{base}\n{}\n{}", envelope.legacy_tenant_no, envelope.issued_at).into_bytes()
     } else {
         base.into_bytes()
     }
+}
+
+// ponytail: in-memory only; an agent restart forgets envelopes still inside the
+// window. Persist seen signatures if guest restarts become player-triggerable.
+fn accept_once(seen: &SeenEnvelopes, envelope: &Envelope) -> bool {
+    let now = SystemTime::now().duration_since(UNIX_EPOCH).map(|elapsed| elapsed.as_secs()).unwrap_or(0);
+    if now.abs_diff(envelope.issued_at) > REPLAY_WINDOW_SECS {
+        return false;
+    }
+    let mut seen = seen.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+    seen.retain(|_, issued| now.abs_diff(*issued) <= REPLAY_WINDOW_SECS);
+    // Hex decoding accepts either case, so key on one spelling of the signature.
+    seen.insert(envelope.signature.to_ascii_lowercase(), envelope.issued_at).is_none()
 }
 
 fn verify_signature(key_hex: &str, message: &[u8], signature: &str) -> bool {

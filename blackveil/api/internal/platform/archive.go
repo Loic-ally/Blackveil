@@ -20,6 +20,7 @@ type archiveEnvelope struct {
 	Principal      string `json:"principal"`
 	TenantUUID     string `json:"tenant_uuid"`
 	LegacyTenantNo int64  `json:"legacy_tenant_no"`
+	IssuedAt       int64  `json:"issued_at"`
 	Signature      string `json:"signature"`
 }
 
@@ -48,9 +49,10 @@ func fetchArchive(ctx context.Context, endpoint, keyHex, mode string, envelope *
 	if err != nil || len(key) < 32 {
 		return "", fmt.Errorf("archive signing key unavailable")
 	}
+	envelope.IssuedAt = time.Now().Unix()
 	projection := fmt.Sprintf("%s\n%s\n%s", envelope.JobID, envelope.Principal, envelope.TenantUUID)
 	if mode == "patched" {
-		projection += fmt.Sprintf("\n%d", envelope.LegacyTenantNo)
+		projection += fmt.Sprintf("\n%d\n%d", envelope.LegacyTenantNo, envelope.IssuedAt)
 	}
 	mac := hmac.New(sha256.New, key)
 	_, _ = mac.Write([]byte(projection))

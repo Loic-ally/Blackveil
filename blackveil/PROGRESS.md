@@ -1,8 +1,8 @@
 # BLACK VEIL build progress
 
-Last source and local-stack review: **2026-10-29**. This inventory includes the
-current working tree, including uncommitted worker/agent replay-protection changes.
-Implementation, previous verification reports and checks rerun during this review
+Last source and local-stack review: **2026-10-29**. This inventory reflects the
+committed tree; the worker/agent replay-protection changes are now committed and
+verified. Implementation, previous verification reports and checks rerun during this review
 are distinguished below; running containers do not prove they contain every local change.
 
 ## Current milestone
@@ -190,15 +190,17 @@ UUID mapping. This yields bounded archive access, not guest root or host access.
 The worker derives its service identity from the database and checks the agent's
 response identity before delivering CSV and recording provenance.
 
-**Current local anti-replay implementation:** the worker adds `issued_at`;
-patched-mode HMAC includes it. The patched Rust agent accepts timestamps within
-120 seconds and rejects repeated signatures, normalizing hexadecimal case.
-The cache is process-local and disappears on restart. Challenge mode retains
-its unsigned-field behavior and does not enforce replay protection. Go protocol
-tests and the Python verifier have been updated; the updated VM behavior was
-not rebuilt or rerun during this review. Persistent replay protection remains
-unfinished. The Stage 08 specification and agent README do not yet describe
-this timestamp extension.
+**Anti-replay implementation (committed and verified):** the worker adds
+`issued_at`; patched-mode HMAC signs it with `legacy_tenant_no`. The patched Rust
+agent accepts timestamps within 120 seconds and rejects repeated signatures
+(case-normalized). Challenge mode retains its unsigned-field behavior and does
+not enforce replay protection. **Verified:** `go test` (worker projection incl.
+`issued_at`) and `vm/verify-agent.py` run against the rebuilt patched guest —
+the patched agent rejects a substituted number, a replayed (case-flipped)
+signature and an expired (`issued_at` 600s old) envelope. The `accept_once` cache
+is process-local by design: the `operator` cannot restart the agent and a
+per-connection panic does not restart the process, so persistent replay storage
+is not required (documented in `vm/agent/README.md` and the Stage 08 spec).
 
 No Stage 03–07 specifications or implemented progression connecting Stage 02 to
 Stage 08 were found. The organizer verifier signs fixtures with organizer-held
@@ -273,17 +275,17 @@ It does not cover destructive reset or overlapping expired-lease owners.
 
 ## Remaining work
 
-1. Specify and implement the player progression from `tenant_admin` to the
-   authorized Linux foothold, including the intermediate investigation clues
-   and Stage 08 prerequisites.
-2. Add tenant settings to complete the planned application scope.
-3. Rebuild and verify the local timestamp/anti-replay changes against both VM
-   modes; synchronize protocol documentation and address replay across agent
-   restarts if required by the final challenge model.
-4. Fence stale worker claims and define/test report completion and notification
-   behavior under overlapping leases and failures between writes.
-5. Automate destructive reset/reprovisioning and guest restart/boundary checks;
-   current CI uses the TCG path and has no dedicated KVM/ARM64 matrix.
-6. Implement the final evidence correlation and isolated validator.
-7. Run the complete organizer walkthrough, final isolation/material-exposure
-   audit and blind playtests; then tune difficulty and publish the rubric.
+Done since the previous review:
+- Player progression `tenant_admin` → Linux foothold → Stage 08 (Stages 03–07),
+  live-verified by `scripts/verify-chain.py`.
+- Tenant settings (`GET /api/v2/tenant`) added with Stage 03.
+- Anti-replay timestamp changes rebuilt, verified and documented (above).
+
+Remaining:
+1. Fence stale worker claims and make report completion/notification writes
+   atomic under overlapping leases and failures between writes.
+2. Automate destructive reset/reprovisioning and guest restart/boundary checks in
+   CI; current CI uses the TCG path and has no dedicated KVM/ARM64 matrix.
+3. Implement the final evidence correlation and isolated validator (Phase 6).
+4. Final isolation/material-exposure audit and blind playtests; then tune
+   difficulty and publish the rubric; publish the organizer walkthrough.
