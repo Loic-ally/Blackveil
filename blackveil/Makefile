@@ -1,6 +1,6 @@
 COMPOSE = docker compose --env-file .env -f compose.yaml
 
-.PHONY: setup up down reset logs check integration network-check vm-up vm-down vm-reset vm-shell vm-verify worker-verify lifecycle-verify recovery-verify team-verify legacy-verify db-roles-verify chain-verify web-chain-verify fencing-verify
+.PHONY: setup up down reset logs check integration network-check vm-up vm-down vm-reset vm-shell vm-verify worker-verify lifecycle-verify recovery-verify team-verify legacy-verify db-roles-verify chain-verify web-chain-verify fencing-verify reset-verify
 
 setup:
 	@test -f .env || cp .env.example .env
@@ -75,3 +75,9 @@ db-roles-verify:
 
 fencing-verify:
 	python3 scripts/verify-fencing.py
+
+# Destructive fresh/restart/reset scenarios, each followed by the full chain.
+# Runs in a disposable copy with its own Compose project and port; the running
+# `blackveil` project is never touched.
+reset-verify:
+	python3 scripts/verify-reset.py
