@@ -49,10 +49,11 @@ func (s *Server) terminal(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	client, err := ssh.Dial("tcp", s.vmSSHAddress, &ssh.ClientConfig{
-		User:            "operator",
-		Auth:            []ssh.AuthMethod{ssh.PublicKeys(signer)},
-		HostKeyCallback: ssh.FixedHostKey(pinnedHostKey),
-		Timeout:         5 * time.Second,
+		User:              "operator",
+		Auth:              []ssh.AuthMethod{ssh.PublicKeys(signer)},
+		HostKeyCallback:   ssh.FixedHostKey(pinnedHostKey),
+		HostKeyAlgorithms: []string{pinnedHostKey.Type()},
+		Timeout:           5 * time.Second,
 	})
 	if err != nil {
 		log.Printf("Linux lab SSH connection failed: %v", err)

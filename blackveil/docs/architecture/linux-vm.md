@@ -23,6 +23,13 @@ and is never sent to the browser. The per-guest SSH host key is pinned from its
 public key in that same volume. The player-facing network still exposes only
 gateway TCP 443.
 
+The VM wrapper waits for `cloud-init status --wait` through its local QEMU SSH
+forward before collecting the final ED25519 public host key. This bootstrap
+connection trusts the guest on the wrapper's loopback port; browser sessions
+always verify the saved key. Health requires both completed bootstrap and the
+agent response, preventing an early SSH key from being pinned before cloud-init
+replaces it.
+
 The guest starts with a key-only, non-sudo `operator` account and a separate
 Rust `aether-agent` systemd service. The guest is a Debian 13 generic-cloud
 image supplied by the Debian Cloud team; its cloud-init seed is generated at VM

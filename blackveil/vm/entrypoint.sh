@@ -40,11 +40,22 @@ run_qemu() {
   "$@" &
   qemu_pid=$!
   trap 'kill "$qemu_pid" 2>/dev/null || true; wait "$qemu_pid" || true' INT TERM
+  cp "$state/operator_ed25519" /tmp/bootstrap-key
+  chmod 0600 /tmp/bootstrap-key
   while kill -0 "$qemu_pid" 2>/dev/null; do
+    if ! curl --fail --silent --max-time 2 http://127.0.0.1:18080/healthz >/dev/null; then
+      sleep 2
+      continue
+    fi
+    if ! ssh -i /tmp/bootstrap-key -p 2222 -o BatchMode=yes -o ConnectTimeout=3 -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null operator@127.0.0.1 'cloud-init status --wait >/dev/null' </dev/null >/dev/null 2>&1; then
+      sleep 5
+      continue
+    fi
     host_key=$(ssh-keyscan -T 2 -p 2222 -t ed25519 127.0.0.1 2>/dev/null | awk '$2 == "ssh-ed25519" {print $2 " " $3; exit}')
     if [ -n "$host_key" ]; then
       printf '%s\n' "$host_key" > "$state/guest_host_ed25519.pub"
       chmod 0644 "$state/guest_host_ed25519.pub"
+      touch /tmp/vm-ready
       break
     fi
     sleep 1
@@ -63,6 +74,7 @@ if [ "$(uname -m)" = aarch64 ]; then
     -netdev user,id=net0,hostfwd=tcp::2222-:22,hostfwd=tcp::18080-:8080 \
     -device virtio-net-device,netdev=net0 \
     -display none -monitor none -serial stdio -no-reboot
+  exit $?
 fi
 
 run_qemu qemu-system-x86_64 \

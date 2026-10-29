@@ -159,7 +159,7 @@ services:
       - linux-vm-state:/var/lib/aether-vm
     networks: [lab]
     healthcheck:
-      test: ["CMD", "curl", "--fail", "--silent", "http://127.0.0.1:18080/healthz"]
+      test: ["CMD-SHELL", "test -f /tmp/vm-ready && curl --fail --silent http://127.0.0.1:18080/healthz"]
       interval: 10s
       timeout: 5s
       retries: 60
@@ -182,7 +182,7 @@ services:
       - linux-vm-patched-state:/var/lib/aether-vm
     networks: [lab]
     healthcheck:
-      test: ["CMD", "curl", "--fail", "--silent", "http://127.0.0.1:18080/healthz"]
+      test: ["CMD-SHELL", "test -f /tmp/vm-ready && curl --fail --silent http://127.0.0.1:18080/healthz"]
       interval: 10s
       timeout: 5s
       retries: 60

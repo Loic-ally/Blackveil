@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import base64
+import argparse
 import http.cookiejar
 import json
 import os
@@ -163,10 +164,16 @@ def verify_browser_terminal() -> None:
 
 
 def main() -> None:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--terminal-only", action="store_true", help="Verify the already running gateway, auth, API and guest terminal")
+    args = parser.parse_args()
     if not (ROOT / ".env").is_file():
         raise SystemExit("Run make setup first so the local agent key is generated.")
-    run(COMPOSE + ["--profile", "vm", "--profile", "vm-verify", "up", "-d", "--build", "--wait", "--wait-timeout", "480", "aether-api", "aether-gateway", "aether-linux-vm", "aether-linux-vm-patched"])
+    if args.terminal_only:
+        verify_browser_terminal()
+        return
     try:
+        run(COMPOSE + ["--profile", "vm", "--profile", "vm-verify", "up", "-d", "--build", "--wait", "--wait-timeout", "480", "aether-api", "aether-gateway", "aether-linux-vm", "aether-linux-vm-patched"])
         run(COMPOSE + ["exec", "-T", "aether-gateway", "nginx", "-s", "reload"])
         run(COMPOSE + ["exec", "-T", "aether-api", "sh", "-c", "test -r /var/lib/aether-vm/operator_ed25519 && test -r /var/lib/aether-vm/guest_host_ed25519.pub && test ! -w /var/lib/aether-vm/operator_ed25519 && test ! -r /var/lib/aether-vm/user-data && test ! -r /var/lib/aether-vm/seed.iso && test ! -r /var/lib/aether-vm/overlay.qcow2"])
         shell = subprocess.run(

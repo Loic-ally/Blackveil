@@ -109,3 +109,14 @@ service contracts are implemented.
 - Auth has no lab network membership or VM key mount, and no host-published port.
 - Unit checks cover revoked/malformed identities, unknown roles and service
   failure. Live signup/login/logout and archive-delivery regressions are exercised.
+
+## VM startup and host identity correction
+
+- VM readiness now waits for the agent, authenticated cloud-init completion and
+  collection of the final ED25519 host key. Bootstrap retries use backoff.
+- The SSH bridge explicitly negotiates the pinned host-key type; otherwise Go
+  could select another valid guest host key and fail its ED25519 pin check.
+- A fresh patched guest reached readiness and passed the agent protocol checks.
+  The browser terminal regression passed through the separate auth service after
+  the negotiation correction (`scripts/vm-verify.py --terminal-only`).
+- The VM verifier now stops its patched fixture even if deployment fails.
