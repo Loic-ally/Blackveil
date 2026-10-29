@@ -34,11 +34,11 @@ only to identities with the `system_admin` milestone; ordinary workspace
 registration does not grant it. The terminal reaches the guest through the API
 over the private lab network. `make vm-shell` remains an organizer-only route.
 The worker sends enrolled archive reports to the guest agent. The browser
-terminal still requires a `system_admin` milestone, which a player now reaches
-through the Stage 01–05 challenge chain (ordinary signup → `tenant_admin` →
-`system_admin`) with no organizer action; Stages 06–08 then play out in the
-guest. Run `make worker-verify` with the VM running to exercise real queued
-archive delivery.
+terminal requires the `system_admin` milestone, which a player reaches through
+the Stage 01–05 challenge chain (ordinary signup → `tenant_admin` →
+`system_admin`) with no organizer action; Stages 06–08 then play out inside that
+terminal. Stages 09–15 are not implemented. Run `make worker-verify` with the VM
+running to exercise real queued archive delivery.
 
 ## Useful commands
 
@@ -55,7 +55,9 @@ make legacy-verify  # Verify Stage 01 in challenge and patched modes
 make recovery-verify # Verify Stage 02 from ordinary signup in both modes
 make db-roles-verify # Check service-specific database privileges
 make web-chain-verify # Verify the player chain Stages 01-05 (no Linux guest)
-make chain-verify   # Verify the full player chain Stages 01-08 (brings up the guest; fails if it is unavailable)
+make chain-verify   # Verify the full player chain Stages 01-08 (requires both guests already running)
+make fencing-verify # Stale worker lease cannot complete or fail a reclaimed job
+make reset-verify   # Fresh/guest restart/agent restart/VM reset/full reset in a disposable copy, chain after each
 make vm-reset       # Remove only the two Linux guest disks and keys
 make logs
 make down
@@ -64,8 +66,17 @@ make reset          # Explicitly removes application data and Linux VM state
 
 ## Build status
 
-See [PROGRESS.md](PROGRESS.md) for verified phase status. Organizer verification
-scripts are for the local disposable lab and should not be exposed to players.
+See [PROGRESS.md](PROGRESS.md) for verified phase status and
+[organizer/full-chain-validation.md](organizer/full-chain-validation.md) for the
+latest recorded command results. Organizer verification scripts and `organizer/`
+are for the local disposable lab and must not be exposed to players.
+
+`make chain-verify` drives Stages 06–08 as shell commands inside the player's own
+WebSocket terminal session; organizer SSH is used only for the patched-guest
+regression, which no player terminal reaches. `make reset-verify` never touches
+the running `blackveil` project: it copies the tree to a temporary directory and
+runs it as a separate Compose project on port 18443 (`BLACKVEIL_PROJECT` /
+`BLACKVEIL_HTTPS_PORT`), then removes it.
 
 `make lifecycle-verify` temporarily stops workers, queues 24 reports across two
 temporary tenants, and starts three worker replicas. It checks single claims,
@@ -74,3 +85,13 @@ original worker count. Run `python3 scripts/verify-lifecycle.py --restart-app`
 to also verify session and queue persistence across an application/database
 stop/start. That option causes brief application downtime and retains named
 volumes and guest state; CI runs it before Linux guest verification.
+
+Full-chain verification requires both guests already running. Provision them with
+`docker compose --env-file .env -f compose.yaml --profile vm --profile vm-verify up -d --build --wait aether-linux-vm aether-linux-vm-patched`
+first; `make chain-verify` does not start missing guests. Terminal framing has
+standalone regressions: `python3 scripts/test-terminal.py`.
+
+The reset verifier injects a narrowly scoped agent-restart sudo rule only into
+its disposable build. This permits a real service restart while preserving the
+boot ID; production guest permissions are unchanged. Exact current results and
+limits are recorded in [full-chain validation](organizer/full-chain-validation.md).

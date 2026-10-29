@@ -154,7 +154,8 @@ each require evidence produced by the previous stage; 05 requires artifacts from
 
 1. **Player-path integration** (`scripts/verify-chain.py`): fresh DB → register →
    Stage 01 → 02 → 03 → 04 → 05 → open terminal → in-VM capture → Stage 08, using
-   only HTTP/SSH/agent interfaces a player uses. **No DB edits, no injected
+   only the HTTP API and the player's WebSocket terminal (Stages 06–08 run as
+   shell commands inside that one session). **No DB edits, no injected
    credentials, no organizer role grants.** Asserts each stage's privilege/enrollment
    actually changed via the public API (`GET /api/me`, `GET /api/v2/tenant`).
 2. **Patched-mode regression** (extend existing `verify-*.py` + `vm-verify.py`):
@@ -170,10 +171,8 @@ organizer walkthrough entry → unintended-bypass check → next stage reachable
 
 ## Environment blockers (stated honestly, per directive)
 
-- **QEMU is not installed on this host.** VM profiles (`make vm-up`) and the
-  Stage 06–08 *integration* paths cannot be executed here; they build (cargo) and
-  are unit-tested, but end-to-end VM verification must run on a QEMU/Docker host
-  (CI uses the TCG path).
+- *(Superseded.)* QEMU runs inside the `aether-linux-vm` container image, so the
+  host needs only Docker; Stage 06–08 integration now runs locally under TCG.
 - **Full-stack `verify-*.py`** require `make up` (Docker). Runnable here but heavy;
   each is run and its result reported explicitly — never assumed from code presence.
 - Application-side stages (03/04/05) are fully Go-testable without QEMU and are the
@@ -186,7 +185,7 @@ organizer walkthrough entry → unintended-bypass check → next stage reachable
 3. Stage 03 (settings + migration endpoint, migration 008, spec, Go test) — **implemented**;
    verified by `go build/vet/test` and by applying migrations 001–008 on real
    Postgres 16 (grants, cross-tenant read, and receipt-hash integrity checked).
-   Live HTTP verification (`verify-reconstruction.py`) pending full-stack `make up`.
+   Live HTTP verification is part of `verify-chain.py` (no separate script).
 4. Stage 04 (reporting-identity enrollment, migration 009, spec, Go test) —
    **implemented**; verified by `go build/vet/test`, migrations 001–009 on
    Postgres, and `verify-chain.py` live (challenge + patched PASS) against the
@@ -210,10 +209,9 @@ organizer walkthrough entry → unintended-bypass check → next stage reachable
    the patched agent refuses the substitution. **BLACK VEIL is playable Stage 01
    through Stage 08 with no organizer action.**
 
-Remaining (outside this chain): the worker/agent anti-replay timestamp work in
-the working tree (`main.rs`, `archive.go`, `verify-agent.py`) is a separate
-in-flight workstream; `render-cloud-init.py`'s patched sample projection matches
-that timestamp-extended agent. Protocol-doc sync for that extension and the
-destructive reset/lease/boundary items (Requirement 7) belong to it.
+*(Status update.)* The anti-replay timestamp work is committed and documented in
+`vm/agent/README.md` and the Stage 08 spec; lease fencing is verified by
+`make fencing-verify`; reset/restart behaviour is verified by `make reset-verify`.
+See `organizer/remaining-risks.md` for what is still open.
 7. `verify-chain.py` + patched regression.
 8. Update PROGRESS.md with actual command output.

@@ -88,9 +88,11 @@ Challenge: an authenticated `tenant_admin` requests installation 4100 and
 receives the platform-operator record including a receipt whose hash matches the
 stored value; requests 4101/4102 and receives the mapping records. Patched: the
 same requests return only the caller's own (empty) history and never a foreign
-receipt, while the settings view still returns the caller's own row. Covered by
-`scripts/verify-reconstruction.py` (live) and `migrationLookupNumber` resolution
-logic (`tenant_test.go`).
+receipt, while the settings view still returns the caller's own row. Covered
+live by the Stage 03 and patched-03 sections of `scripts/verify-chain.py`
+(`make web-chain-verify` / `make chain-verify`) and by the `migrationLookupNumber`
+resolution logic (`tenant_test.go`). There is no separate
+`verify-reconstruction.py`.
 
 **Remediation**
 

@@ -207,6 +207,11 @@ make recovery-verify  # Stage 01→02 challenge + patched
 make legacy-verify    # Stage 01 challenge + patched
 ```
 
-None of these grant privileges by editing the database or injecting
-organizer-held credentials for the player path; they exercise the same
-interfaces a player uses.
+Only `chain-verify` is a player-equivalent run: it reaches every stage through
+the HTTP API and the player's own WebSocket terminal, with no database edits,
+injected credentials or role grants. The other targets are organizer fixtures:
+`vm-verify` grants `system_admin` with SQL and signs envelopes with the
+organizer-held key; `chain-verify`'s patched-agent check uses organizer SSH
+because no player terminal reaches the patched guest. `make reset-verify` reruns
+`chain-verify` after fresh deploy, guest restart, agent restart, VM reset and
+full reset in a disposable copy.

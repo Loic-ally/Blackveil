@@ -77,9 +77,11 @@ the player confirms the captured tenant (North Works) is mapped.
 
 **Verification**
 
-`scripts/verify-chain.py` (challenge): over the operator SSH the terminal uses,
+`scripts/verify-chain.py` (challenge): inside the player's own authenticated
+WebSocket terminal session (the same `/api/lab/terminal` a browser uses),
 confirm `GET /v1/build`, read the retained capture, confirm it is the North Works
-reporting envelope, and confirm the operator cannot read the worker key.
+reporting envelope, and confirm `cat` of the worker key and tenant map exits
+nonzero with "Permission denied".
 
 **Remediation**
 

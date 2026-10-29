@@ -35,3 +35,13 @@ account cannot restart the service (no sudo/systemctl) and a per-request thread
 panic does not restart the process; persist the cache only if guest restarts
 ever become player-triggerable.
 
+
+Verification uses two distinct paths: the full-chain verifier submits the
+operator-readable retained capture and changes only its numeric selector through
+one player WebSocket session. `vm/verify-agent.py` uses organizer-signed fixtures
+to test patched binding, freshness and duplicate rejection independently. A
+refusal of the old retained capture alone does not distinguish an invalid
+signature from expiry. Reboots and service restarts clear the replay cache;
+reset/reprovisioning preserves `.env`'s signing key and regenerates guest SSH
+keys and the retained capture. See `organizer/full-chain-validation.md` for
+executed checks rather than inferring results from these protocol properties.

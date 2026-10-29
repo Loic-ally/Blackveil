@@ -39,7 +39,10 @@ legitimate worker-signed request (North Works) left under
 `/var/lib/aether-migration/`. This capture — not the signing key — is the valid
 envelope this stage manipulates: the player substitutes only `legacy_tenant_no`
 and resubmits it to the agent at `127.0.0.1:8080`. `scripts/verify-chain.py`
-exercises exactly this path end-to-end.
+exercises exactly this path end-to-end inside the player's WebSocket terminal
+(`sed` on the capture piped to `curl`). The patched-agent refusal is an organizer
+assertion over the patched fixture's loopback SSH, because no player terminal
+reaches that fixture.
 
 **Realistic origin**
 
