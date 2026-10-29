@@ -13,7 +13,7 @@ service contracts are implemented.
 | 1. Repository initialization | Complete | Project layout, trust-boundary definition, first stage spec, Makefile, Compose, CI, reset/setup scripts and network policy are present. |
 | 2. Application MVP | In progress | Web/API/PostgreSQL/Redis/NATS/worker/telemetry run. Ordinary workflows pass the black-box smoke test. Auth is still in the API process; add the separate auth service, service identities, admin flows and remaining integration coverage. |
 | 3. First playable challenge | Not started | Add the first documented challenge flaw only after baseline behavior is working. |
-| 4. Linux integration | Not started | Add disposable VM lifecycle and a restricted application-to-VM progression. |
+| 4. Linux integration | In progress | Disposable Debian 13 QEMU guest, restricted `operator` login and Rust agent are implemented; add the browser-gated application terminal and live worker-to-agent jobs. |
 | 5. Advanced investigation | Not started | Implement worker/agent trust analysis and native service stages. |
 | 6. Final proof | Not started | Add evidence correlation and isolated validator. |
 | 7. Full challenge validation | Not started | Execute organizer walkthrough and reset tests. |
@@ -30,6 +30,10 @@ service contracts are implemented.
 - The challenge root cause is inconsistent identity interpretation across the
   UUID tenant model, retained numeric compatibility model, worker principal map
   and native agent trust envelope. Each stage must be specified before coding.
+- The Linux guest uses Debian's generic-cloud image checked against the pinned
+  SHA-512 manifest in `vm/images/SHA512SUMS`; disks and SSH keys live in named
+  Docker volumes. QEMU user networking reaches only API/worker peers on the
+  internal lab network, with explicit SSH/agent forwards and no public egress.
 
 ## Verification record
 
@@ -48,6 +52,17 @@ service contracts are implemented.
 - The local host entry could not be written because `/etc/hosts` is protected in
   this environment. `make setup` prints the exact `127.0.0.1 aether.blackveil.test`
   line; add it manually before using the requested hostname in a browser.
+- The Linux VM stage implementation is in `vm/`: QEMU/TCG lifecycle, cloud-init
+  provisioning, a key-only non-sudo operator, a native Rust agent, and
+  challenge/patched identity-envelope handling. `make vm-verify` exercises both.
+- Linux VM verification passed on the ARM64 development host: both guests booted
+  from clean volumes; SSH confirmed the operator is non-root, non-sudo and cannot
+  read the worker key; the challenge accepted a changed unsigned legacy number;
+  the patched agent rejected it. API and worker both reached the agent health
+  endpoint over the private lab network.
+- After adding the VM, `scripts/check-network.sh` still passed with only gateway
+  TCP 443 published; `scripts/smoke.py` passed ordinary signup, tenant isolation,
+  telemetry, incidents, audit, notifications and asynchronous reports.
 
 ## Remaining Phase 2 work
 
@@ -59,3 +74,12 @@ service contracts are implemented.
 - Exercise clean restart, reset, and concurrent worker behavior in CI.
 - Make the ordinary UI accessible through the local hostname after the hosts
   entry is installed.
+
+## Remaining Linux integration work
+
+- Add an application-authenticated browser terminal that becomes available only
+  after the intended async-processing milestone; do not expose the VM's SSH port.
+- Have the worker submit real report envelopes to `aether-agent`, binding job,
+  principal and tenant IDs from database state and enforcing replay protection.
+- Add guest restart/reset and guest-host boundary checks to CI on Linux/KVM and
+  the ARM64 TCG development path.

@@ -6,10 +6,10 @@
 - [x] PostgreSQL, Redis, NATS, web, API, worker and telemetry have no published
   host ports.
 - [x] `edge` is the only non-internal Docker network; only the gateway joins it.
-- [x] `app` and `data` Docker networks are marked internal.
+- [x] `app`, `data` and `lab` Docker networks are marked internal.
 - [x] The gateway joins `edge` and `app`, never `data`.
 - [x] The API joins `app` and `data`; the web joins only `app`.
-- [x] Worker and telemetry join only `data`.
+- [x] Worker joins `data` and `lab`; telemetry joins only `data`.
 - [x] No Docker socket, host device or writable host filesystem is mounted.
 - [x] No container uses `privileged: true`.
 - [x] API, worker, telemetry and web run as unprivileged users; gateway and
@@ -20,8 +20,14 @@
 
 ## Not implemented or not yet verified
 
-- [ ] Disposable challenge VM and its network boundary (Phase 4).
-- [ ] Native `aether-agent` confinement and lifecycle tests (Phase 4).
+- [x] Disposable Debian guest under QEMU TCG; no devices, host mounts, Docker
+  socket, privileged mode or host-published VM ports.
+- [x] Native Rust `aether-agent` runs under a separate guest service account;
+  operator login is key-only and has no sudo grant.
+- [x] VM disk is isolated in Docker-managed named volumes and can be reset
+  without removing application database state.
+- [ ] Browser-gated operator terminal from the application (Phase 4).
+- [ ] Worker-to-agent report-job integration and replay protection (Phase 4/5).
 - [ ] Organizer validator network and evidence submission protocol (Phase 6).
 - [ ] Independent restart/reset test in CI (still listed as Phase 2 work).
 - [ ] Image digest pinning and automated image vulnerability scanning.

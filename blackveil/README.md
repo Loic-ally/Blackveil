@@ -27,14 +27,23 @@ equipment and telemetry, incident workflows, internal notifications, CSV report
 jobs, audit events, API documentation, PostgreSQL, Redis, NATS and a worker.
 Challenge weaknesses are not part of this baseline increment.
 
+The disposable Debian guest runs in a non-privileged QEMU container under TCG,
+so no host virtualization package is required. The browser terminal gate and
+the worker's live report-to-agent call are still in progress; `make vm-shell` is
+for local organizer inspection only.
+
 ## Useful commands
 
 ```sh
 make check          # Go checks, Next.js production build, Compose config check
 make network-check  # Verify only the gateway publishes host ports
+make vm-up          # Build and start the disposable Debian Linux guest
+make vm-shell       # Organizer-only SSH through the private QEMU forward
+make vm-verify      # Compare vulnerable and patched native-agent behavior
+make vm-reset       # Remove only the two Linux guest disks and keys
 make logs
 make down
-make reset          # Explicitly removes BLACK VEIL persistent volumes
+make reset          # Explicitly removes application data and Linux VM state
 ```
 
 ## Build status

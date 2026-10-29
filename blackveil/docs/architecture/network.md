@@ -15,7 +15,7 @@ flowchart LR
     A --> N[(aether-bus / NATS)]
     N --> WK[aether-worker]
     WK --> L
-    WK --> VM[Disposable Linux VM / aether-agent]
+    WK --> VM[QEMU Debian VM / Rust aether-agent]
     V[blackveil-validator] -. signed evidence only .-> VM
 ```
 
@@ -32,14 +32,18 @@ flowchart LR
 | API / worker | PostgreSQL | TCP 5432 |
 | API / worker | Redis | TCP 6379 |
 | API / worker | NATS | TCP 4222 |
-| Worker | Linux VM agent | Explicit challenge-only port, added in Phase 4 |
+| API / worker | Linux VM agent | TCP 18080 on private `lab` network only |
 | Player network | Any internal service | Denied |
 | Challenge workloads | Validator | Denied; evidence is submitted through a constrained one-way interface |
 
 Only the gateway is published on the host. Database, cache, bus, API, worker,
-telemetry, auth and legacy services have no host port mappings. Compose internal
-networks will be checked by `scripts/check-network.sh` when service definitions
-are added.
+telemetry, auth, legacy and VM services have no host port mappings. Compose
+internal networks are checked by `scripts/check-network.sh`. The internal `lab`
+network joins only the API, worker and QEMU VM service; the gateway and web
+frontend are excluded. QEMU user-mode NAT lets the guest reach only the API and
+worker peers on the internal `lab` network; that network has no public egress.
+Only guest SSH and agent ports are forwarded to the VM container, and neither
+port is host-published.
 
 ## Deployment limitation
 

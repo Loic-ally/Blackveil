@@ -1,0 +1,4 @@
+organizer/
+*.qcow2
+*.iso
+target/
