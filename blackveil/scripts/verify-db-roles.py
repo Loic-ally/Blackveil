@@ -30,7 +30,14 @@ SELECT
   has_table_privilege('aether_auth','worker_service_identities','SELECT'),
   has_column_privilege('aether_auth','users','role','UPDATE'),
   has_table_privilege('aether_worker','reports','INSERT'),
-  has_table_privilege('aether_worker','audit_events','INSERT');
+  has_table_privilege('aether_worker','audit_events','INSERT'),
+  has_table_privilege('aether_api','administrator_recovery_receipts','SELECT'),
+  has_table_privilege('aether_api','administrator_recovery_receipts','INSERT'),
+  has_table_privilege('aether_api','administrator_recovery_redemptions','INSERT'),
+  has_table_privilege('aether_api','administrator_recovery_redemptions','DELETE'),
+  has_table_privilege('aether_auth','administrator_recovery_receipts','SELECT'),
+  has_table_privilege('aether_worker','administrator_recovery_receipts','SELECT'),
+  has_table_privilege('aether_legacy','administrator_recovery_receipts','SELECT');
 """
 
 
@@ -41,7 +48,7 @@ def main():
         input=QUERY, text=True, cwd=ROOT, capture_output=True)
     if result.returncode:
         raise SystemExit(f"database role query failed: {result.stderr.strip()}")
-    expected = "f,f,f,f,f,t,f,t,f,f,f,t,t,f,f,t,f,f,f,f,f,t"
+    expected = "f,f,f,f,f,t,f,t,f,f,f,t,t,f,f,t,f,f,f,f,f,t,t,f,t,f,f,f,f"
     actual = result.stdout.strip()
     if actual != expected:
         raise SystemExit(f"unexpected service-role privileges: {actual}")

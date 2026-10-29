@@ -39,8 +39,12 @@ jobs:
           python3 scripts/smoke.py
           python3 scripts/verify-team.py
           python3 scripts/verify-legacy.py
+          python3 scripts/verify-recovery.py
           python3 scripts/verify-db-roles.py
           ./scripts/check-network.sh
+      - name: Verify persistent restart and competing report workers
+        working-directory: blackveil
+        run: python3 scripts/verify-lifecycle.py --restart-app
       - name: Verify Linux VM, worker archive and terminal boundary
         working-directory: blackveil
         run: |

@@ -18,13 +18,14 @@ export default function TeamPage() {
   const [members,setMembers]=useState<Member[]>([]);
   const [invites,setInvites]=useState<Invite[]>([]);
   const [self,setSelf]=useState("");
+  const [tenant,setTenant]=useState("");
   const [allowed,setAllowed]=useState(false);
   const [error,setError]=useState("");
   const [url,setURL]=useState("");
   const [busy,setBusy]=useState(false);
   const refresh=useCallback(async()=>{
     try {
-      const me=await request("/api/me");setSelf(me.id);
+      const me=await request("/api/me");setSelf(me.id);setTenant(me.tenant_id);
       if(!["tenant_admin","system_admin"].includes(me.role)) {setAllowed(false);setError("Workspace administrator access is required.");return}
       setAllowed(true);
       const team=await request("/api/team");setMembers(team.users);setInvites(team.invitations);
@@ -42,10 +43,22 @@ export default function TeamPage() {
     const result=await mutate("/api/team/invitations","POST",{email:data.get("email"),role:data.get("role")});
     if(result) setURL(result.url);
   }
+  async function recover(event:FormEvent<HTMLFormElement>) {
+    event.preventDefault();const data=new FormData(event.currentTarget);
+    await mutate("/api/v2/team/recover","POST",{tenant_uuid:tenant,legacy_tenant_no:Number(data.get("installation")),receipt:data.get("receipt")});
+  }
   return <main className="console-main"><div className="console-content">
     <Link href="/workspace">← Workspace</Link>
     <div className="page-title"><div><p className="eyebrow">AETHER / ADMINISTRATION</p><h1>Workspace team</h1><p>Manage membership and pending invitations.</p></div></div>
     {error&&<p role="alert" className="inline-error">{error}</p>}
+    {!allowed&&tenant&&<section className="panel table-panel"><div className="panel-head"><h2>Restore workspace administration</h2></div>
+      <form className="auth-form" onSubmit={recover} style={{padding:24}}>
+        <p>Migrated installations retain an administrator handover receipt in their historical export. Use your installation reference and receipt to restore administration in this workspace. Each account may redeem a receipt once.</p>
+        <label>Installation reference<input name="installation" type="number" min="1" required/></label>
+        <label>Recovery receipt<input name="receipt" autoComplete="off" minLength={64} maxLength={64} pattern="[0-9a-fA-F]{64}" required/></label>
+        <button className="button button-dark" disabled={busy}>{busy?"Restoring…":"Restore administration"}</button>
+      </form>
+    </section>}
     {allowed&&<>
       <section className="panel table-panel"><div className="panel-head"><h2>Members</h2></div>
         <div className="report-list">{members.map(member=><div className="report-row" key={member.id}><div><b>{member.name}</b><small>{member.email}</small></div>

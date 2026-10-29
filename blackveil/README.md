@@ -47,8 +47,10 @@ make vm-up          # Build and start the disposable Debian Linux guest
 make vm-shell       # Organizer-only SSH through the private QEMU forward
 make vm-verify      # Compare vulnerable and patched native-agent behavior
 make worker-verify  # Verify VM archive delivery and interrupted-job recovery
+make lifecycle-verify # Verify durable queued jobs with three competing workers
 make team-verify    # Verify invitation and tenant authorization
 make legacy-verify  # Verify Stage 01 in challenge and patched modes
+make recovery-verify # Verify Stage 02 from ordinary signup in both modes
 make db-roles-verify # Check service-specific database privileges
 make vm-reset       # Remove only the two Linux guest disks and keys
 make logs
@@ -60,3 +62,11 @@ make reset          # Explicitly removes application data and Linux VM state
 
 See [PROGRESS.md](PROGRESS.md) for verified phase status. Organizer verification
 scripts are for the local disposable lab and should not be exposed to players.
+
+`make lifecycle-verify` temporarily stops workers, queues 24 reports across two
+temporary tenants, and starts three worker replicas. It checks single claims,
+notifications and tenant isolation, cleans up its tenants, and restores the
+original worker count. Run `python3 scripts/verify-lifecycle.py --restart-app`
+to also verify session and queue persistence across an application/database
+stop/start. That option causes brief application downtime and retains named
+volumes and guest state; CI runs it before Linux guest verification.

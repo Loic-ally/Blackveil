@@ -3,16 +3,17 @@
 ## Current milestone
 
 Phase 1 is complete. Phase 2 has a working application baseline and tenant
-administration. Phase 3 now has its first end-to-end identity-confusion stage;
-the application-to-guest progression and later guest stages remain incomplete.
+administration. Phase 3 now chains Stage 01 (cross-tenant historical export) into Stage 02
+(workspace administrator recovery) from an ordinary signup; the
+administrator-to-guest progression and later guest stages remain incomplete.
 
 ## Milestones
 
 | Phase | State | Evidence / next action |
 |---|---|---|
 | 1. Repository initialization | Complete | Project layout, trust-boundary definition, first stage spec, Makefile, Compose, CI, reset/setup scripts and network policy are present. |
-| 2. Application MVP | In progress | Registration, UUID tenant APIs, team invitations, telemetry, incidents, notifications, audit, and asynchronous reports work. API, auth, worker, telemetry and legacy use separate database roles; clean-restart and concurrent worker CI coverage remain. |
-| 3. First playable challenge | In progress | Stage 01 reproduces a bounded cross-tenant historical export in challenge mode and canonical tenant resolution in patched mode. The route is tested through HTTPS; the path to a guest foothold remains unimplemented. |
+| 2. Application MVP | In progress | Registration, UUID tenant APIs, team invitations, telemetry, incidents, notifications, audit, and asynchronous reports work. Service database roles, persistent application restart and concurrent worker checks are covered; the administrator path is Stage 02; tenant settings remain. |
+| 3. First playable challenge | In progress | Stage 01 reproduces a bounded cross-tenant historical export in challenge mode and canonical tenant resolution in patched mode. Stage 02 turns the exported handover receipt into tenant_admin in the player's own workspace. Both are tested through HTTPS; the path to a guest foothold remains unimplemented. |
 | 4. Linux integration | In progress | Disposable Debian 13 QEMU guest, restricted `operator` login, Rust agent and `system_admin`-gated browser terminal are implemented; Live archive reports now use the worker and VM agent; the earlier milestone granting access is pending. |
 | 5. Advanced investigation | Not started | Implement worker/agent trust analysis and native service stages. |
 | 6. Final proof | Not started | Add evidence correlation and isolated validator. |
@@ -76,8 +77,8 @@ the application-to-guest progression and later guest stages remain incomplete.
 
 ## Remaining Phase 2 work
 
-- Add tenant settings and implement the intended challenge path to administrator membership.
-- Exercise clean restart, reset, and concurrent worker behavior in CI.
+- Add tenant settings. The challenge path to administrator membership is Stage 02.
+- Exercise destructive reset behavior in CI; persistent application restart and concurrent workers are now covered.
 - Make the ordinary UI accessible through the local hostname after the hosts
   entry is installed.
 
@@ -175,3 +176,44 @@ the application-to-guest progression and later guest stages remain incomplete.
   invitations, Stage 01 in both identity modes, archive delivery and recovery of
   interrupted jobs. `scripts/verify-db-roles.py` confirmed non-superuser roles
   and the expected grant boundaries.
+
+## Persistent restart and concurrent workers
+
+- Added `scripts/verify-lifecycle.py` and `make lifecycle-verify`. The organizer
+  check queues 24 inventory reports across two temporary tenants while workers
+  are stopped, then starts three replicas and verifies single claims, cleared
+  leases, one notification per job, CSV tenant isolation and foreign-download
+  denial. It removes its tenants and restores the original worker count.
+- `--restart-app` also stops and starts the application, PostgreSQL, Redis and
+  NATS before processing, verifying persisted sessions and queued work without
+  removing named volumes or restarting the Linux guests. CI runs this variant
+  before its VM checks.
+- Live restart/concurrency verification passed on the development Docker stack.
+- This covers graceful stop/start and competing claims. Destructive reset,
+  overlapping expired-lease owners and guest request replay protection remain
+  separate work.
+
+## Administrator recovery stage
+
+- Stage 02 (`docs/stages/stage-02-administrator-recovery.md`): migration 007
+  seeds a random per-initialization handover receipt for installation 4101,
+  stored only as a SHA-256 hash and readable only by the API role. The
+  plaintext appears in the Stage 01 historical export.
+- `POST /api/v2/team/recover` and the `/team` recovery form check the session
+  UUID and the receipt/installation pair. Challenge mode omits the binding
+  between the receipt's source tenant and the active workspace; patched mode
+  requires all three to agree. Redemption and promotion share one transaction
+  under the workspace role lock; only `tenant_admin` can be granted.
+- Fixed an audit insert that reused one parameter as both UUID and text
+  (SQLSTATE 42P08), which made every recovery return HTTP 500.
+- `scripts/verify-recovery.py` (`make recovery-verify`) passed: fresh signup →
+  historical CSV → receipt → tenant_admin with no organizer grants; wrong
+  destination, wrong installation, invalid receipt and caller-supplied role are
+  rejected; concurrent redemption yields exactly one 204; audit records source
+  and destination UUIDs without the receipt; a demoted account cannot replay;
+  the terminal stays denied. Patched mode rejects the known foreign receipt and
+  accepts canonical recovery for a migrated-tenant fixture.
+- Smoke, team, Stage 01, database-role, lifecycle and network checks, Go
+  tests/vet and the production web build passed after integration.
+- Remaining: tenant_admin does not yet lead to the Linux foothold; the
+  administrator-to-`system_admin`/terminal milestone needs its own stage spec.
