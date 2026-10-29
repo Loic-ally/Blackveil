@@ -35,6 +35,7 @@ recovery = _load("recovery_check", "verify-recovery.py")
 NORTH = "4f3e2d1c-0b9a-4876-9d5c-4b3a29180716"
 PLATFORM_INSTALLATION = 4100
 RECEIPT_RE = re.compile(r"Recovery receipt: ([0-9a-f]{64})")
+ENROLL_RE = re.compile(r"Enrollment receipt: ([0-9a-f]{64})")
 
 
 def scalar(statement):
@@ -56,6 +57,11 @@ def signup(profiles, label):
     require(status == 201, f"signup failed: {profile}")
     profiles.append(profile)
     return client, profile
+
+
+def enroll(client, tenant, installation, receipt):
+    return client.request("/api/v2/tenant/reporting-identity", "POST", {
+        "tenant_uuid": tenant, "installation_no": installation, "receipt": receipt})
 
 
 def reach_tenant_admin(player, tenant):
@@ -124,8 +130,54 @@ def run():
         require(any(e["detail"]["legacy_tenant_no"] == PLATFORM_INSTALLATION for e in reads),
                 "stage 03 migration read not audited")
         require(po_receipt not in str(events), "audit copied the platform-operator secret")
-        print("PASS: challenge chain signup → stage 01 → stage 02 → stage 03; "
+        print("PASS: challenge stage 03 — signup → stage 01 → stage 02 → stage 03; "
               "platform-operator receipt reconstructed and hash-verified, no privilege gained.", flush=True)
+
+        # ---- Stage 04: reporting-identity enrollment ----
+        # Reconstruct the reporting-enrollment receipt from installation 4101 (Stage 03 flaw).
+        status, body = player.request("/api/v2/tenant/migration?legacy_tenant_no=4101")
+        require(status == 200 and body["records"], "stage 04 reporting record not reconstructable")
+        reporting_receipt = next((ENROLL_RE.search(r["detail"]).group(1)
+                                  for r in body["records"]
+                                  if r["revision"] == "RP-22" and ENROLL_RE.search(r["detail"])), None)
+        require(reporting_receipt is not None, "reporting enrollment receipt not found in installation 4101")
+
+        # Before enrollment, the worker→agent archive path is closed.
+        status, _ = player.request("/api/reports", "POST", {"type": "legacy-archive"})
+        require(status == 403, "unenrolled workspace could queue legacy-archive")
+
+        # Input boundaries: invalid receipt and wrong installation are refused.
+        require(enroll(player, tenant, 4101, "0" * 64)[0] == 403, "enrollment accepted an invalid receipt")
+        require(enroll(player, tenant, 9999, reporting_receipt)[0] == 403, "enrollment accepted a wrong installation")
+
+        # Challenge enrollment with North Works' receipt succeeds for the player's own tenant.
+        status, _ = enroll(player, tenant, 4101, reporting_receipt)
+        require(status == 204, f"stage 04 enrollment failed: {status}")
+
+        status, settings = player.request("/api/v2/tenant")
+        require(settings["archive_enabled"] is True, "stage 04 did not enroll the workspace")
+        _, me = player.request("/api/me")
+        require(me["archive_enabled"] is True and me["role"] == "tenant_admin",
+                "stage 04 changed role or did not enroll")
+
+        # legacy-archive is now queueable; the slot is empty, so queueability is the gate.
+        status, _ = player.request("/api/reports", "POST", {"type": "legacy-archive"})
+        require(status == 202, "enrolled workspace could not queue legacy-archive")
+
+        # Enrollment is single-use per workspace.
+        require(enroll(player, tenant, 4101, reporting_receipt)[0] == 409, "workspace enrolled twice")
+
+        # Terminal is still denied: enrollment grants no role.
+        status, _ = player.request("/api/lab/terminal")
+        require(status == 403, "stage 04 granted terminal access")
+
+        _, events = player.request("/api/audit")
+        enrolled = [e for e in events if e["action"] == "reporting.enrolled"]
+        require(len(enrolled) == 1 and enrolled[0]["detail"]["source_tenant_uuid"] == NORTH
+                and enrolled[0]["detail"]["tenant_uuid"] == tenant, "enrollment provenance missing")
+        require(reporting_receipt not in str(events), "audit copied the enrollment secret")
+        print("PASS: challenge stage 04 — reporting-identity enrollment via a foreign installation "
+              "receipt; svc:aether-reporting enrolled, legacy-archive opened, no role gained.", flush=True)
 
         # ---- Patched mode: the Stage 03 disclosure is closed ----
         legacy.switch("patched")
@@ -139,6 +191,14 @@ def run():
         require(status == 200 and settings["tenant_uuid"] == tenant, "patched settings view regressed")
         print("PASS: patched stage 03 resolves only the caller's canonical number; "
               "no foreign migration record or receipt is disclosed.", flush=True)
+
+        # Patched Stage 04: a foreign installation's receipt cannot enroll the
+        # caller (the binding check precedes the single-use conflict, so an
+        # already-enrolled player still proves the gate fired with 403).
+        require(enroll(player, tenant, 4101, reporting_receipt)[0] == 403,
+                "patched mode enrolled the caller from a foreign installation receipt")
+        print("PASS: patched stage 04 binds the enrollment receipt's installation "
+              "to the caller and refuses a foreign receipt.", flush=True)
     finally:
         try:
             for profile in profiles:

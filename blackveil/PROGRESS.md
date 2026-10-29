@@ -112,6 +112,22 @@ stage grants no role or enrollment. **Verified:** `go build`/`go vet`/`go test`
 Postgres 16 with grant, cross-tenant-read and receipt-integrity checks. Live
 HTTP verification (`scripts/verify-reconstruction.py`) is not yet written/run.
 
+### Stage 04 — reporting-identity enrollment
+
+Implemented in `reporting.go`, migration 009 and `POST /api/v2/tenant/reporting-identity`,
+with specification `docs/stages/stage-04-reporting-identity.md`. A `tenant_admin`
+presents the reporting-enrollment receipt reconstructed in Stage 03 (installation
+4101) to enroll its own workspace as `svc:aether-reporting`. Challenge mode omits
+binding the receipt's canonical installation to the caller's tenant (the Stage 02
+unbound-source flaw at the enrollment hop); patched mode requires them to agree
+and refuses. Self-enrolled workspaces get an archive number from a dedicated
+≥500000 sequence (no collision with tenant numbers or seeded archive ids; empty
+guest slot), so `legacy-archive` becomes queueable but resolves an empty archive
+— reading a real foreign archive still needs Stage 08. Grants no role. **Verified:**
+`go build`/`go vet`/`go test` (incl. `enrollmentBindingOK`), migrations 001–009 on
+Postgres, and `scripts/verify-chain.py` live against the full stack (challenge and
+patched PASS).
+
 ### Stage 08 — native agent identity binding
 
 The mechanism is implemented in `vm/agent/src/main.rs`, with specification

@@ -187,7 +187,11 @@ organizer walkthrough entry → unintended-bypass check → next stage reachable
    verified by `go build/vet/test` and by applying migrations 001–008 on real
    Postgres 16 (grants, cross-tenant read, and receipt-hash integrity checked).
    Live HTTP verification (`verify-reconstruction.py`) pending full-stack `make up`.
-4. Stage 04, 5. Stage 05 — application-side, Go-testable.
+4. Stage 04 (reporting-identity enrollment, migration 009, spec, Go test) —
+   **implemented**; verified by `go build/vet/test`, migrations 001–009 on
+   Postgres, and `verify-chain.py` live (challenge + patched PASS) against the
+   full running stack.
+5. Stage 05 — application-side, Go-testable.
 6. Stage 06/07 VM wiring + Stage 08 doc sync + agent rebuild.
 7. `verify-chain.py` + patched regression.
 8. Update PROGRESS.md with actual command output.
