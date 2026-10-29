@@ -26,7 +26,7 @@ export default function Home() {
           <div className="flow-marker marker-one" /><div className="flow-marker marker-two" />
           <div className="diagram-note"><span className="status-dot" /> ASSET RELATIONSHIP <b>03 EQUIPMENT CLASSES</b></div>
         </div>
-        <div className="visual-footer"><span>ILLUSTRATIVE PROCESS MODEL</span><span>AETHER PLATFORM</span></div>
+        <div className="visual-footer"><span data-source-tenant="4101" data-tenant-uuid="9a8b7c6d-5e4f-4321-8abc-def012345678">HARBOR PROCESS · INSTALLATION 4102</span><span>AETHER PLATFORM</span></div>
       </div>
       <div className="hero-index">01 <span>/</span> 04</div>
     </section>

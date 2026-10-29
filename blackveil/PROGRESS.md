@@ -2,17 +2,17 @@
 
 ## Current milestone
 
-Phase 1 is complete. Phase 2 has a working local application baseline and remains
-in progress until the remaining admin workflow and full
-service contracts are implemented.
+Phase 1 is complete. Phase 2 has a working application baseline and tenant
+administration. Phase 3 now has its first end-to-end identity-confusion stage;
+the application-to-guest progression and later guest stages remain incomplete.
 
 ## Milestones
 
 | Phase | State | Evidence / next action |
 |---|---|---|
 | 1. Repository initialization | Complete | Project layout, trust-boundary definition, first stage spec, Makefile, Compose, CI, reset/setup scripts and network policy are present. |
-| 2. Application MVP | In progress | Web/API/PostgreSQL/Redis/NATS/worker/telemetry run. Ordinary workflows pass the black-box smoke test. Authentication runs in its own service and worker service identities exist; Tenant administration and invitations are implemented; add the legacy service and remaining integration coverage. |
-| 3. First playable challenge | Not started | Add the first documented challenge flaw only after baseline behavior is working. |
+| 2. Application MVP | In progress | Registration, UUID tenant APIs, team invitations, telemetry, incidents, notifications, audit, and asynchronous reports work. Dedicated legacy service and ordinary workflow regressions pass; database service roles and clean-restart CI coverage remain. |
+| 3. First playable challenge | In progress | Stage 01 reproduces a bounded cross-tenant historical export in challenge mode and canonical tenant resolution in patched mode. The route is tested through HTTPS; the path to a guest foothold remains unimplemented. |
 | 4. Linux integration | In progress | Disposable Debian 13 QEMU guest, restricted `operator` login, Rust agent and `system_admin`-gated browser terminal are implemented; Live archive reports now use the worker and VM agent; the earlier milestone granting access is pending. |
 | 5. Advanced investigation | Not started | Implement worker/agent trust analysis and native service stages. |
 | 6. Final proof | Not started | Add evidence correlation and isolated validator. |
@@ -77,8 +77,7 @@ service contracts are implemented.
 ## Remaining Phase 2 work
 
 - Add dedicated database roles so the auth/API process boundary also restricts database authority.
-- Add the legacy compatibility service and independent service-identity model.
-- Add tenant settings and the intended challenge path to administrator membership.
+- Add tenant settings and implement the intended challenge path to administrator membership.
 - Exercise clean restart, reset, and concurrent worker behavior in CI.
 - Make the ordinary UI accessible through the local hostname after the hosts
   entry is installed.
@@ -131,3 +130,22 @@ service contracts are implemented.
   session enforcement. Production frontend and Go checks passed.
 - Organizer tests grant a temporary administrator prerequisite and clean up their
   tenants. Signup still grants ordinary operator access; no admin bypass was added.
+
+## Legacy identity stage
+
+- Added a private legacy-history service and historical export workflow over the
+  existing NATS worker. The public installation reference, UUID API docs,
+  migration records, worker map and CSV output provide independent evidence
+  about the old and new identity models.
+- The worker and legacy service use a dedicated credential, separate from the
+  Linux agent key. The service is attached only to the private data network and
+  publishes no host port.
+- `scripts/verify-legacy.py` passed in challenge and patched modes: the ordinary
+  operator retrieves the seeded cross-tenant archive only in challenge mode;
+  patched mode resolves the canonical migration mapping, while enrolled archive
+  exports continue to work. UUID boundary and audit evidence checks passed.
+- The normal application smoke test, production web build, Go tests and network
+  isolation script passed after integration.
+- Remaining: this stage demonstrates bounded data access but does not grant the
+  intended Linux foothold. The admin membership and terminal progression need a
+  fully specified and verified stage.

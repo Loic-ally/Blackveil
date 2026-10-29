@@ -27,7 +27,9 @@ caller's own `tenant_uuid`. The API checks that UUID against the session, then
 copies the request's `legacy_tenant_no` into the queued job without checking
 that the number belongs to that UUID. The worker asks the legacy service for
 records using that number. Patched mode ignores the supplied number and resolves
-the legacy number from the canonical tenant row.
+the archive number from the canonical worker migration map. Workspaces with no
+archive migration resolve to the empty archive (number zero), so newly allocated
+database tenant numbers cannot collide with historical archive identifiers.
 
 **Realistic origin**
 
@@ -71,7 +73,7 @@ responsible; repeating the operation with a fresh session distinguishes it.
 **Verification**
 
 An organizer test will create two tenants, authenticate a low-privilege user in
-one, submit that user's UUID with the other tenant's historical integer, verify
+one, submit that user's UUID with a seeded historical tenant's integer, verify
 the bounded record and assert that patched mode returns only the authenticated
 tenant's archive while preserving ordinary reports.
 

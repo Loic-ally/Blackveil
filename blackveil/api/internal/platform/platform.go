@@ -115,6 +115,7 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("PATCH /api/incidents/{id}", s.auth(s.sameOrigin(http.HandlerFunc(s.updateIncident))))
 	mux.Handle("GET /api/notifications", s.auth(http.HandlerFunc(s.notifications)))
 	mux.Handle("POST /api/notifications/{id}/read", s.auth(s.sameOrigin(http.HandlerFunc(s.readNotification))))
+	mux.Handle("POST /api/v2/reports/historical", s.auth(s.sameOrigin(http.HandlerFunc(s.historicalReport))))
 	mux.Handle("GET /api/reports", s.auth(http.HandlerFunc(s.listReports)))
 	mux.Handle("POST /api/reports", s.auth(s.sameOrigin(http.HandlerFunc(s.createReport))))
 	mux.Handle("GET /api/reports/{id}", s.auth(http.HandlerFunc(s.getReport)))
@@ -668,7 +669,7 @@ func (s *Server) audit(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) docs(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	_, _ = io.WriteString(w, `<!doctype html><html><head><title>AETHER API</title><style>body{max-width:900px;margin:4rem auto;font:16px system-ui;color:#17252b}code{background:#edf1ef;padding:.2rem .4rem}li{margin:.65rem 0}</style></head><body><h1>AETHER Platform API</h1><p>All requests use the active HTTPS session cookie. Mutations require a same-origin request.</p><ul><li><code>GET /api/dashboard</code> — operating summary</li><li><code>GET /api/assets</code>, <code>GET /api/assets/{id}/telemetry?hours=24</code></li><li><code>GET /api/incidents</code>, <code>POST /api/incidents</code>, <code>PATCH /api/incidents/{id}</code></li><li><code>GET /api/notifications</code></li><li><code>GET /api/reports</code>, <code>POST /api/reports</code>, <code>GET /api/reports/{id}</code></li><li><code>GET /api/audit</code></li></ul><p>Account creation is available on the public platform. Each new workspace starts with ordinary operator access.</p></body></html>`)
+	_, _ = io.WriteString(w, `<!doctype html><html><head><title>AETHER API</title><style>body{max-width:900px;margin:4rem auto;font:16px system-ui;color:#17252b}code{background:#edf1ef;padding:.2rem .4rem}li{margin:.65rem 0}</style></head><body><h1>AETHER Platform API</h1><p>All requests use the active HTTPS session cookie. Mutations require a same-origin request.</p><ul><li><code>GET /api/dashboard</code> — operating summary</li><li><code>GET /api/assets</code>, <code>GET /api/assets/{id}/telemetry?hours=24</code></li><li><code>GET /api/incidents</code>, <code>POST /api/incidents</code>, <code>PATCH /api/incidents/{id}</code></li><li><code>GET /api/notifications</code></li><li><code>GET /api/reports</code>, <code>POST /api/reports</code>, <code>GET /api/reports/{id}</code></li><li><code>GET /api/audit</code> — includes archived operation provenance</li><li><code>GET /api/team</code>, <code>POST /api/team/invitations</code>, <code>PATCH /api/team/users/{id}</code> — workspace administrators</li></ul><h2>Historical exports (compatibility schema 1)</h2><p><code>POST /api/v2/reports/historical</code> accepts <code>tenant_uuid</code> (your current workspace UUID from <code>GET /api/me</code>) and <code>legacy_tenant_no</code> (the numeric installation reference printed on historical exports). The response is a queued report ID; poll the report list and download its CSV when complete.</p><p>The UUID field was added during the 2024 identity migration. Installation references remain in the compatibility contract for archived import clients. Empty archives produce a CSV header with no records.</p><p>Account creation is available on the public platform. Each new workspace starts with ordinary operator access.</p></body></html>`)
 }
 
 func (s *Server) runWorker(ctx context.Context) error {
@@ -767,6 +768,8 @@ func (s *Server) processOneReport(ctx context.Context) error {
 	var content string
 	if kind == "asset-inventory" {
 		content, err = s.assetReport(ctx, tenantID)
+	} else if kind == "legacy-history" {
+		content, err = s.legacyReport(ctx, id)
 	} else if kind == "legacy-archive" {
 		content, err = s.archiveReport(ctx, id, tenantID)
 	} else {
@@ -879,6 +882,9 @@ func Run() error {
 	handler := server.Handler()
 	if mode == "auth" {
 		handler = server.AuthHandler()
+	}
+	if mode == "legacy" {
+		handler = server.LegacyHandler()
 	}
 	httpServer := &http.Server{Addr: addr, Handler: handler, ReadHeaderTimeout: 5 * time.Second, IdleTimeout: 60 * time.Second}
 	log.Printf("AETHER %s listening on %s", mode, addr)

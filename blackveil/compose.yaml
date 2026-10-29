@@ -66,12 +66,45 @@ services:
     security_opt: [no-new-privileges:true]
     restart: unless-stopped
 
+  aether-legacy:
+    build:
+      context: ./api
+      dockerfile: Dockerfile
+    environment:
+      AETHER_MODE: legacy
+      AETHER_LEGACY_SERVICE_KEY: ${AETHER_LEGACY_SERVICE_KEY}
+      LISTEN_ADDR: ":8080"
+      DATABASE_URL: postgres://${AETHER_POSTGRES_USER:-aether}:${AETHER_DB_PASSWORD}@aether-db:5432/${AETHER_POSTGRES_DB:-aether}?sslmode=disable
+      NATS_URL: nats://aether-bus:4222
+      REDIS_URL: redis://aether-cache:6379/0
+      PUBLIC_ORIGIN: ${PUBLIC_ORIGIN:-https://aether.blackveil.test}
+    depends_on:
+      aether-db:
+        condition: service_healthy
+      aether-bus:
+        condition: service_started
+      aether-cache:
+        condition: service_healthy
+    networks: [data]
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8080/healthz >/dev/null || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+      start_period: 15s
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    restart: unless-stopped
+
   aether-api:
     build:
       context: ./api
       dockerfile: Dockerfile
     environment:
       AETHER_MODE: api
+      AETHER_IDENTITY_MODE: ${AETHER_IDENTITY_MODE:-challenge}
       AETHER_AUTH_URL: http://aether-auth:8080
       LISTEN_ADDR: ":8080"
       DATABASE_URL: postgres://${AETHER_POSTGRES_USER:-aether}:${AETHER_DB_PASSWORD}@aether-db:5432/${AETHER_POSTGRES_DB:-aether}?sslmode=disable
@@ -112,13 +145,17 @@ services:
       dockerfile: Dockerfile
     environment:
       AETHER_MODE: worker
+      AETHER_LEGACY_URL: http://aether-legacy:8080
       DATABASE_URL: postgres://${AETHER_POSTGRES_USER:-aether}:${AETHER_DB_PASSWORD}@aether-db:5432/${AETHER_POSTGRES_DB:-aether}?sslmode=disable
       NATS_URL: nats://aether-bus:4222
       REDIS_URL: redis://aether-cache:6379/0
       AETHER_AGENT_MODE: ${AETHER_AGENT_MODE:-challenge}
       AETHER_AGENT_URL: ${AETHER_AGENT_URL:-http://aether-linux-vm:18080}
       AETHER_AGENT_KEY: ${AETHER_AGENT_KEY}
+      AETHER_LEGACY_SERVICE_KEY: ${AETHER_LEGACY_SERVICE_KEY}
     depends_on:
+      aether-legacy:
+        condition: service_healthy
       aether-api:
         condition: service_healthy
     networks: [data, lab]

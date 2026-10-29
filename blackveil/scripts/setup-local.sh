@@ -12,12 +12,21 @@ placeholder = "replace-with-a-long-local-only-password"
 if placeholder in text:
     env_file.write_text(text.replace(placeholder, secrets.token_hex(32)))
 
-text = env_file.read_text()
-agent_placeholder = "replace-with-a-random-32-byte-hex-key"
-if agent_placeholder in text:
-    env_file.write_text(text.replace(agent_placeholder, secrets.token_hex(32)))
-elif "AETHER_AGENT_KEY=" not in text:
-    env_file.write_text(text.rstrip() + "\nAETHER_AGENT_KEY=" + secrets.token_hex(32) + "\n")
+lines = env_file.read_text().splitlines()
+values = {
+    "AETHER_AGENT_KEY": "replace-with-a-random-32-byte-hex-key",
+    "AETHER_LEGACY_SERVICE_KEY": "replace-with-a-different-random-32-byte-hex-key",
+}
+for name, placeholder in values.items():
+    found = False
+    for index, line in enumerate(lines):
+        if line.startswith(name + "="):
+            found = True
+            if line.partition("=")[2] == placeholder:
+                lines[index] = name + "=" + secrets.token_hex(32)
+    if not found:
+        lines.append(name + "=" + secrets.token_hex(32))
+env_file.write_text("\n".join(lines) + "\n")
 PY
 
 mkdir -p gateway/certs
