@@ -105,6 +105,67 @@ def agent_archive(service, envelope):
         return {"_raw": out}
 
 
+GUEST_MISSING = ("full-chain verification requires the Linux guest, but the terminal returned {status}. "
+                 "Stages 06, 07 and 08 were NOT executed. Start the guest with `make vm-up` and re-run, "
+                 "or run `make web-chain-verify` for the application-only (Stages 01-05) scope. "
+                 "Refusing to report full-chain success.")
+
+
+class Terminal:
+    """The player's own browser terminal: one authenticated WebSocket to the
+    API's /api/lab/terminal, bridged to the guest operator PTY.
+
+    Each `run` wraps the command in delimiters printed by the shell itself.
+    The marker text is assembled by printf from two arguments, so the PTY echo
+    of the typed line ("BV_END_ <tag>") can never match the real output line
+    ("BV_END_<tag>:<status>"). stdin is closed for the command so it cannot
+    swallow later input."""
+
+    def __init__(self, cookie):
+        self.socket, status, self.buffered = vmverify.connect_websocket(cookie, ORIGIN)
+        if status != 101:
+            self.socket.close()
+            raise AssertionError(GUEST_MISSING.format(status=status) if status == 503
+                                 else f"system_admin terminal handshake returned {status}, expected 101")
+        self.output = ""
+
+    def run(self, command, timeout=30):
+        tag = uuid.uuid4().hex
+        line = (f"printf '\\n%s%s\\n' BV_BEGIN_ {tag}; ( {command} ) </dev/null 2>&1; "
+                f"printf '\\n%s%s:%s\\n' BV_END_ {tag} \"$?\"\r")
+        require(len(line.encode()) < 4096, "terminal command exceeds the API read limit")
+        self.socket.settimeout(min(timeout, 1))
+        vmverify.send_websocket_text(self.socket, line)
+        end = re.compile(rf"BV_BEGIN_{tag}\n(.*)\nBV_END_{tag}:(\d+)\n", re.S)
+        deadline = time.monotonic() + timeout
+        while True:
+            match = end.search(self.output.replace("\r", ""))
+            if match:
+                self.output = ""
+                return int(match.group(2)), match.group(1)
+            require(time.monotonic() < deadline, f"terminal command timed out after {timeout}s: {command!r}")
+            try:
+                opcode, payload, self.buffered = vmverify.read_frame(self.socket, self.buffered)
+            except TimeoutError:
+                continue
+            if opcode == 8:
+                raise AssertionError(f"terminal closed while running {command!r}")
+            if opcode in (0, 1, 2):
+                self.output += payload.decode("utf-8", "replace")
+
+    def ok(self, command, timeout=30):
+        status, out = self.run(command, timeout)
+        require(status == 0, f"terminal command exited {status}: {command!r}: {out!r}")
+        return out
+
+    def close(self):
+        self.socket.close()
+
+
+AGENT = "http://127.0.0.1:8080"
+CAPTURE = "/var/lib/aether-migration/last-archive-request.json"
+
+
 def reach_tenant_admin(player, tenant):
     """Stage 01 → Stage 02: ordinary signup to tenant_admin via discoverable evidence."""
     _, csv = legacy.report(player, tenant, 4101)
