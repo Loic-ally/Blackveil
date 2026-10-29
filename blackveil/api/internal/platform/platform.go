@@ -760,7 +760,11 @@ func (s *Server) processOneReport(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	if _, err = tx.Exec(ctx, `UPDATE reports SET status='running',lease_until=now()+interval '1 minute',attempt_count=attempt_count+1 WHERE id=$1`, id); err != nil {
+	// Capture the attempt_count as a lease fence token: a competing worker that
+	// reclaims an expired lease increments it, so this owner's later result or
+	// failure write is rejected and cannot clobber the reclaiming worker's work.
+	var fence int
+	if err = tx.QueryRow(ctx, `UPDATE reports SET status='running',lease_until=now()+interval '1 minute',attempt_count=attempt_count+1 WHERE id=$1 RETURNING attempt_count`, id).Scan(&fence); err != nil {
 		return err
 	}
 	if err = tx.Commit(ctx); err != nil {
@@ -777,18 +781,33 @@ func (s *Server) processOneReport(ctx context.Context) error {
 		content, err = s.maintenanceReport(ctx, tenantID)
 	}
 	if err != nil {
-		_, updateErr := s.db.Exec(ctx, `UPDATE reports SET status='failed',error='report generation failed',lease_until=NULL,completed_at=now() WHERE id=$1`, id)
+		// Only the current lease owner may mark the report failed.
+		_, updateErr := s.db.Exec(ctx, `UPDATE reports SET status='failed',error='report generation failed',lease_until=NULL,completed_at=now() WHERE id=$1 AND status='running' AND attempt_count=$2`, id, fence)
 		if updateErr != nil {
 			return updateErr
 		}
 		return err
 	}
-	_, err = s.db.Exec(ctx, `UPDATE reports SET status='complete',content=$1,lease_until=NULL,completed_at=now() WHERE id=$2`, content, id)
+	// Record the result and its notification atomically, under the lease fence,
+	// so a report never completes without its notification (or vice versa) and a
+	// stale owner cannot overwrite a reclaiming worker's result.
+	done, err := s.db.Begin(ctx)
 	if err != nil {
 		return err
 	}
-	_, err = s.db.Exec(ctx, `INSERT INTO notifications(id,tenant_id,user_id,message) VALUES($1,$2,$3,$4)`, newUUID(), tenantID, requestedBy, "Your AETHER "+kind+" report is ready.")
-	return err
+	defer done.Rollback(ctx)
+	result, err := done.Exec(ctx, `UPDATE reports SET status='complete',content=$1,lease_until=NULL,completed_at=now() WHERE id=$2 AND status='running' AND attempt_count=$3`, content, id, fence)
+	if err != nil {
+		return err
+	}
+	if result.RowsAffected() != 1 {
+		// Lease lost to a reclaiming worker; let that owner finish and notify.
+		return nil
+	}
+	if _, err = done.Exec(ctx, `INSERT INTO notifications(id,tenant_id,user_id,message) VALUES($1,$2,$3,$4)`, newUUID(), tenantID, requestedBy, "Your AETHER "+kind+" report is ready."); err != nil {
+		return err
+	}
+	return done.Commit(ctx)
 }
 
 func (s *Server) assetReport(ctx context.Context, tenantID string) (string, error) {

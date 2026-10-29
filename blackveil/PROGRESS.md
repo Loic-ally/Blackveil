@@ -67,10 +67,12 @@ fencing / boundary items (Requirement 7).
   Historical exports and VM archive reports are separate paths.
 - **Durability:** PostgreSQL stores report jobs and results; NATS wakes workers
   and polling also finds work. Claims use `FOR UPDATE SKIP LOCKED`, a one-minute
-  lease and attempt counter. Expired running jobs can be reclaimed. This is not
-  a general exactly-once guarantee: overlapping expired-lease owners are not
-  fenced, and completion/notification writes are separate operations.
-- **Database:** ordered transactional migrations 001–007; separate API, auth,
+  lease and attempt counter. Expired running jobs can be reclaimed. The
+  `attempt_count` is a lease fence: a reclaim advances it, so a stale owner's
+  completion or failure write is rejected, and the result and its notification
+  are written in one transaction (a report never completes without its
+  notification). Verified by `scripts/verify-fencing.py`.
+- **Database:** ordered transactional migrations 001–010; separate API, auth,
   worker, telemetry and legacy runtime roles with scoped grants. A short-lived
   migrator owns schema changes; runtime services do not receive its credentials.
 
@@ -271,7 +273,8 @@ guest boots as aarch64 under TCG on Apple Silicon.
 uses three workers, checks claims/results/notifications/isolation, cleans its
 fixtures and restores the worker count. Its restart variant exercises graceful
 application/database/cache/bus restart while retaining volumes and guest state.
-It does not cover destructive reset or overlapping expired-lease owners.
+It does not cover destructive reset; overlapping expired-lease owners are
+covered by `scripts/verify-fencing.py`.
 
 ## Remaining work
 
@@ -280,12 +283,13 @@ Done since the previous review:
   live-verified by `scripts/verify-chain.py`.
 - Tenant settings (`GET /api/v2/tenant`) added with Stage 03.
 - Anti-replay timestamp changes rebuilt, verified and documented (above).
+- Stale worker-claim fencing (attempt_count fence) and atomic result/notification
+  writes in `processOneReport`, with `scripts/verify-fencing.py` (`make fencing-verify`).
+- Organizer solve walkthrough at `docs/WALKTHROUGH.md`.
 
 Remaining:
-1. Fence stale worker claims and make report completion/notification writes
-   atomic under overlapping leases and failures between writes.
-2. Automate destructive reset/reprovisioning and guest restart/boundary checks in
+1. Automate destructive reset/reprovisioning and guest restart/boundary checks in
    CI; current CI uses the TCG path and has no dedicated KVM/ARM64 matrix.
-3. Implement the final evidence correlation and isolated validator (Phase 6).
-4. Final isolation/material-exposure audit and blind playtests; then tune
-   difficulty and publish the rubric; publish the organizer walkthrough.
+2. Implement the final evidence correlation and isolated validator (Phase 6).
+3. Final isolation/material-exposure audit and blind playtests; then tune
+   difficulty and publish the rubric.
