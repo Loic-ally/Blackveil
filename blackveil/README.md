@@ -34,9 +34,11 @@ only to identities with the `system_admin` milestone; ordinary workspace
 registration does not grant it. The terminal reaches the guest through the API
 over the private lab network. `make vm-shell` remains an organizer-only route.
 The worker sends enrolled archive reports to the guest agent. The browser
-terminal still requires a `system_admin` milestone, and the challenge path that
-grants guest access has not yet been implemented. Run `make worker-verify` with
-the VM running to exercise real queued archive delivery.
+terminal still requires a `system_admin` milestone, which a player now reaches
+through the Stage 01–05 challenge chain (ordinary signup → `tenant_admin` →
+`system_admin`) with no organizer action; Stages 06–08 then play out in the
+guest. Run `make worker-verify` with the VM running to exercise real queued
+archive delivery.
 
 ## Useful commands
 
@@ -52,6 +54,8 @@ make team-verify    # Verify invitation and tenant authorization
 make legacy-verify  # Verify Stage 01 in challenge and patched modes
 make recovery-verify # Verify Stage 02 from ordinary signup in both modes
 make db-roles-verify # Check service-specific database privileges
+make web-chain-verify # Verify the player chain Stages 01-05 (no Linux guest)
+make chain-verify   # Verify the full player chain Stages 01-08 (brings up the guest; fails if it is unavailable)
 make vm-reset       # Remove only the two Linux guest disks and keys
 make logs
 make down

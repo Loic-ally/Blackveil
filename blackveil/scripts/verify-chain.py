@@ -1,13 +1,23 @@
 #!/usr/bin/env python3
-"""Organizer player-path verification (Requirement 4, path 1).
+"""Organizer player-path verification (Requirements 3 and 4).
 
-Drives the real HTTP interfaces a player uses — register, Stage 01 historical
-export, Stage 02 administrator recovery, Stage 03 historical reconstruction —
-with no database edits, injected credentials or organizer role grants. Each
-stage's privilege/enrollment change is observed through the public API, and the
-Stage 03 artifact is proved to be a genuine Stage 05 key by hashing it.
+Drives the real HTTP, WebSocket terminal and guest-agent interfaces a player
+uses — with no database edits, injected credentials or organizer role grants.
+Each stage's privilege/enrollment change is observed through the public API,
+and the Stage 03 artifact is proved to be a genuine Stage 05 key by hashing it.
 
-Extends as later stages land. Run against a running stack: `make up` first.
+Two explicit scopes (Requirement 3):
+
+  --web   Application-only: Stages 01-05 plus the patched-mode regressions.
+          The Linux guest is NOT required. (`make web-chain-verify`)
+
+  (full)  Default: Stages 01-08. The Linux guest and its patched fixture are
+          MANDATORY. A missing or unreachable guest is a hard failure that
+          names the stages not executed and exits nonzero — it never prints a
+          full-chain success message. (`make chain-verify`)
+
+Run against a running stack: `make up` first (and `make vm-up` for the full
+scope).
 """
 import hashlib
 import importlib.util
@@ -106,7 +116,7 @@ def reach_tenant_admin(player, tenant):
     require(me["role"] == "tenant_admin", "stage 02 did not promote to tenant_admin")
 
 
-def run():
+def run(web=False):
     original = os.environ.get("AETHER_IDENTITY_MODE") or next(
         (line.split("=", 1)[1] for line in (ROOT / ".env").read_text().splitlines()
          if line.startswith("AETHER_IDENTITY_MODE=")), "challenge")
@@ -256,20 +266,31 @@ def run():
         print("PASS: challenge stage 05 — operator recovery requires Stage 03 receipt + Stage 04 "
               "enrollment, elevates once to system_admin, and opens the terminal authz gate.", flush=True)
 
-        # ---- Stage 06: reach the restricted Linux operator shell ----
-        cookie = next((c.value for c in player.cookies if c.name == "aether_session"), None)
-        require(cookie is not None, "no session cookie available for the terminal")
-        # The terminal rejects a foreign origin even for a system_admin session.
-        denied, status, _ = vmverify.connect_websocket(cookie, "https://untrusted.example")
-        denied.close()
-        require(status == 403, f"terminal accepted a foreign origin: {status}")
-
-        terminal, status, buffered = vmverify.connect_websocket(cookie, ORIGIN)
-        vm_up = status != 503
-        if not vm_up:
-            terminal.close()
-            print("SKIP: stage 06–08 — VM profile not running (run `make vm-up`, then re-run).", flush=True)
+        if web:
+            # Application-only scope: the Linux guest (Stages 06-08) is out of
+            # scope by request, not skipped by failure. `make chain-verify`
+            # covers the full chain and requires the guest.
+            print("NOTE: web scope — Stages 06-08 (Linux guest) are not part of this run; "
+                  "use `make chain-verify` with the guest up for the full chain.", flush=True)
         else:
+            # ---- Stage 06: reach the restricted Linux operator shell ----
+            cookie = next((c.value for c in player.cookies if c.name == "aether_session"), None)
+            require(cookie is not None, "no session cookie available for the terminal")
+            # The terminal rejects a foreign origin even for a system_admin session.
+            denied, status, _ = vmverify.connect_websocket(cookie, "https://untrusted.example")
+            denied.close()
+            require(status == 403, f"terminal accepted a foreign origin: {status}")
+
+            terminal, status, buffered = vmverify.connect_websocket(cookie, ORIGIN)
+            if status == 503:
+                # Full-chain verification must never silently convert a missing
+                # guest into a skip and still report success (Requirement 3).
+                terminal.close()
+                raise AssertionError(
+                    "full-chain verification requires the Linux guest, but the terminal returned 503. "
+                    "Stages 06, 07 and 08 were NOT executed. Start the guest with `make vm-up` and re-run, "
+                    "or run `make web-chain-verify` for the application-only (Stages 01-05) scope. "
+                    "Refusing to report full-chain success.")
             require(status == 101, f"system_admin terminal handshake returned {status}, expected 101")
             try:
                 # Marker preceded by the command OUTPUT (uid 1000, group operator)
@@ -288,7 +309,6 @@ def run():
             print("PASS: challenge stage 06 — the elevated player opens the restricted non-root "
                   "Linux operator shell through the terminal, with no SQL grant.", flush=True)
 
-        if vm_up:
             # ---- Stage 07: native service investigation (in the operator shell) ----
             build = guest("aether-linux-vm", "curl -s --max-time 5 http://127.0.0.1:8080/v1/build")
             require("legacy-envelope/1" in build, f"agent build endpoint unexpected: {build!r}")
@@ -320,18 +340,20 @@ def run():
 
             # Patched VM regression: the patched agent signs the number and the
             # timestamp, so the same substitution (and a stale replay) are refused.
+            # The patched guest is mandatory for the full chain — a missing fixture
+            # is a hard failure, not a skip.
             p_capture = guest("aether-linux-vm-patched", "cat /var/lib/aether-migration/last-archive-request.json")
-            if p_capture.strip():
-                p_env = json.loads(p_capture)
-                p_forged = dict(p_env)
-                p_forged["legacy_tenant_no"] = 4102
-                refused = agent_archive("aether-linux-vm-patched", p_forged)
-                require("resolved_legacy_tenant_no" not in refused,
-                        f"patched agent accepted a substituted number: {refused}")
-                print("PASS: patched stage 08 — the patched agent refuses the number substitution "
-                      "(signature covers the number and timestamp).", flush=True)
-            else:
-                print("SKIP: patched stage 08 — patched VM fixture not provisioned.", flush=True)
+            require(p_capture.strip(),
+                    "patched Linux guest (aether-linux-vm-patched) is required for full-chain "
+                    "verification but is not provisioned. Start it with the vm-verify profile and re-run.")
+            p_env = json.loads(p_capture)
+            p_forged = dict(p_env)
+            p_forged["legacy_tenant_no"] = 4102
+            refused = agent_archive("aether-linux-vm-patched", p_forged)
+            require("resolved_legacy_tenant_no" not in refused,
+                    f"patched agent accepted a substituted number: {refused}")
+            print("PASS: patched stage 08 — the patched agent refuses the number substitution "
+                  "(signature covers the number and timestamp).", flush=True)
 
         # ---- Patched mode: the Stage 03 disclosure is closed ----
         legacy.switch("patched")
@@ -361,6 +383,13 @@ def run():
                 "patched mode elevated from a foreign platform-operator receipt")
         print("PASS: patched stage 05 binds the platform-operator receipt to the "
               "destination workspace and refuses a foreign receipt.", flush=True)
+
+        if web:
+            print("OK: application-only chain verified — Stages 01-05 (challenge) and the "
+                  "patched 03/04/05 regressions. Linux Stages 06-08 not in scope.", flush=True)
+        else:
+            print("OK: full chain verified — Stages 01-08 (challenge) through the real player "
+                  "interfaces, plus the patched 03/04/05/08 regressions.", flush=True)
     finally:
         try:
             for profile in profiles:
@@ -376,4 +405,8 @@ def run():
 
 
 if __name__ == "__main__":
-    run()
+    import argparse
+    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument("--web", action="store_true",
+                        help="Application-only scope (Stages 01-05); the Linux guest is not required.")
+    run(web=parser.parse_args().web)

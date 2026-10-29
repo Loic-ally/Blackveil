@@ -42,14 +42,18 @@ jobs:
           python3 scripts/verify-recovery.py
           python3 scripts/verify-db-roles.py
           ./scripts/check-network.sh
+      - name: Verify application chain Stages 01-05 (web scope, no guest)
+        working-directory: blackveil
+        run: python3 scripts/verify-chain.py --web
       - name: Verify persistent restart and competing report workers
         working-directory: blackveil
         run: python3 scripts/verify-lifecycle.py --restart-app
-      - name: Verify Linux VM, worker archive and terminal boundary
+      - name: Verify full chain Stages 01-08 and Linux VM boundary
         working-directory: blackveil
         run: |
-          docker compose --env-file .env -f compose.yaml --profile vm up -d --build --wait --wait-timeout 600 aether-linux-vm
+          docker compose --env-file .env -f compose.yaml --profile vm --profile vm-verify up -d --build --wait --wait-timeout 600 aether-linux-vm aether-linux-vm-patched
           python3 scripts/verify-worker.py
+          python3 scripts/verify-chain.py
           python3 scripts/vm-verify.py
       - name: Tear down test environment
         if: always()

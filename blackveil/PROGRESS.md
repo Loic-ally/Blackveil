@@ -264,12 +264,23 @@ smoke/team/legacy/recovery/database-role/network checks, lifecycle verification
 with `--restart-app`, worker archive checks and VM/terminal verification, followed
 by volume teardown. Workflow presence is not evidence of a successful CI run.
 
-`scripts/verify-chain.py` (`make chain-verify`) is the player-path verifier: it
-drives signup → Stages 01–08 through the real HTTP, WebSocket terminal and guest
-agent interfaces with no DB edits or injected privileges, and asserts the patched
-Stage 03/04/05 disclosures and the patched-agent Stage 08 substitution are all
-refused. It requires the full stack plus `make vm-up` (the VM fixtures); the
-guest boots as aarch64 under TCG on Apple Silicon.
+`scripts/verify-chain.py` is the player-path verifier, with two explicit scopes
+(Requirement 3):
+
+- `make web-chain-verify` (`--web`) drives signup → Stages 01–05 plus the patched
+  03/04/05 regressions through the real HTTP interfaces. The Linux guest is not
+  required, so this runs in ordinary CI.
+- `make chain-verify` (default) drives signup → Stages 01–08 through the real
+  HTTP, WebSocket terminal and guest agent interfaces, and asserts the patched
+  03/04/05 disclosures and the patched-agent Stage 08 substitution are refused.
+  The challenge and patched Linux guests are **mandatory**: the target brings
+  them up and waits, and if the guest is missing or unreachable the verifier
+  exits nonzero naming the stages it did not execute — it never prints a
+  full-chain success message or silently downgrades to a skip. On Apple Silicon
+  the guest boots as aarch64 under TCG.
+
+Both scopes drive the same interfaces a player uses (no DB edits, injected
+credentials or organizer role grants).
 
 `scripts/verify-lifecycle.py` queues 24 reports across two temporary tenants,
 uses three workers, checks claims/results/notifications/isolation, cleans its

@@ -1,6 +1,6 @@
 COMPOSE = docker compose --env-file .env -f compose.yaml
 
-.PHONY: setup up down reset logs check integration network-check vm-up vm-down vm-reset vm-shell vm-verify worker-verify lifecycle-verify recovery-verify team-verify legacy-verify db-roles-verify chain-verify fencing-verify
+.PHONY: setup up down reset logs check integration network-check vm-up vm-down vm-reset vm-shell vm-verify worker-verify lifecycle-verify recovery-verify team-verify legacy-verify db-roles-verify chain-verify web-chain-verify fencing-verify
 
 setup:
 	@test -f .env || cp .env.example .env
@@ -55,7 +55,15 @@ lifecycle-verify:
 recovery-verify:
 	python3 scripts/verify-recovery.py
 
+# Application-only scope: Stages 01-05, no Linux guest required.
+web-chain-verify:
+	python3 scripts/verify-chain.py --web
+
+# Full scope: Stages 01-08. Both the challenge and patched Linux guests are
+# mandatory, so bring them up (and wait) before driving the player path. A
+# missing or unhealthy guest makes the verifier exit nonzero, never skip.
 chain-verify:
+	$(COMPOSE) --profile vm --profile vm-verify up -d --build --wait --wait-timeout 600 aether-linux-vm aether-linux-vm-patched
 	python3 scripts/verify-chain.py
 
 team-verify:
