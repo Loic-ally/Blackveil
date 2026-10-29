@@ -1,4 +1,4 @@
-# Obscura — INSANE pentest box for MetSec. INTENTIONALLY VULNERABLE, localhost only.
+# Obscura — INSANE pentest box for Watson. INTENTIONALLY VULNERABLE, localhost only.
 # arbitrary file read -> source review -> custom auth-logic bypass -> admin cmd injection
 # -> foothold as www -> unsafe-YAML deserialization in a root sudo job -> root.
 FROM python:3.12-slim

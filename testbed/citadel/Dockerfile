@@ -1,4 +1,4 @@
-# Citadel — a multi-stage pentest box for MetSec. INTENTIONALLY VULNERABLE.
+# Citadel — a multi-stage pentest box for Watson. INTENTIONALLY VULNERABLE.
 # SQLi auth bypass -> admin SSTI RCE -> foothold as appuser -> sudo tar (GTFOBins) -> root.
 FROM python:3.12-slim
 

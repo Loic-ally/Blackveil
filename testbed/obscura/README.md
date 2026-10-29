@@ -1,6 +1,6 @@
 # Obscura — INSANE box
 
-The hardest MetSec target: **no known CVE**. Every flaw is a custom logic mistake
+The hardest Watson target: **no known CVE**. Every flaw is a custom logic mistake
 the attacker must discover by **reading the source** (exposed via an arbitrary file
 read) and chaining several small bugs — in the spirit of HTB Insane boxes like
 *Scanned*. INTENTIONALLY VULNERABLE — localhost only.
@@ -33,5 +33,5 @@ No stage is a published vulnerability — the agent has to *find and chain its o
 Then (exploitation on; this is a hard, long run — give it budget):
 
 ```bash
-metsec scan --web http://127.0.0.1:5003/ --scope scope.yaml --exploit --budget 60
+watson scan --web http://127.0.0.1:5003/ --scope scope.yaml --exploit --budget 60
 ```

@@ -1,6 +1,6 @@
 """Acme Notes — a small demo web app.
 
-INTENTIONALLY VULNERABLE. This is a practice target for MetSec. Do not deploy it
+INTENTIONALLY VULNERABLE. This is a practice target for Watson. Do not deploy it
 anywhere reachable from the internet. Run it only on a host you control:
 
     pip install flask requests

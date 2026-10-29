@@ -1,6 +1,6 @@
 # Citadel — multi-stage pentest box
 
-A harder, chained target for MetSec. INTENTIONALLY VULNERABLE — run only on a host
+A harder, chained target for Watson. INTENTIONALLY VULNERABLE — run only on a host
 you control, bound to loopback. Themed on current real-world techniques (SSTI RCE,
 cf. Foreman CVE-2026-12544; the whole chain must be walked in order).
 
@@ -23,8 +23,8 @@ Each stage gates the next: no SSTI without the admin session, no admin without t
 ./run.sh        # builds + serves on http://127.0.0.1:5002
 ```
 
-Then point MetSec at it (scope lists 127.0.0.1, exploitation on):
+Then point Watson at it (scope lists 127.0.0.1, exploitation on):
 
 ```bash
-metsec scan --web http://127.0.0.1:5002/ --scope scope.yaml --exploit --budget 40
+watson scan --web http://127.0.0.1:5002/ --scope scope.yaml --exploit --budget 40
 ```

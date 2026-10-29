@@ -1,4 +1,4 @@
-"""Acme Status — demo service for the MetSec Linux lab. INTENTIONALLY VULNERABLE.
+"""Acme Status — demo service for the Watson Linux lab. INTENTIONALLY VULNERABLE.
 
 Runs as low-priv 'webuser'. /ping has a command-injection sink: the foothold the
 agent uses, then escalates to root via the sudo-find misconfiguration.

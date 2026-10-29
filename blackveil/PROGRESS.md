@@ -22,7 +22,7 @@ the application-to-guest progression and later guest stages remain incomplete.
 
 ## Decisions
 
-- Keep the existing MetSec product intact; BLACK VEIL is a separate project in
+- Keep the existing Watson product intact; BLACK VEIL is a separate project in
   `blackveil/`.
 - No challenge service will mount the Docker socket or host filesystem.
 - The player entry point is the HTTPS gateway only. Application services will
