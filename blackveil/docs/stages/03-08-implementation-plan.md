@@ -197,6 +197,11 @@ organizer walkthrough entry → unintended-bypass check → next stage reachable
    a player reaches `system_admin` from ordinary signup with no organizer action,
    and the terminal authz gate opens. The application-side chain (01→05) is
    complete and live-verified.
-6. Stage 06/07 VM wiring + Stage 08 doc sync + agent rebuild.
+6. Stage 06 (reach the operator shell through the existing terminal; no new
+   authz code) — **implemented/verified**: `verify-chain.py` opens the terminal
+   WebSocket from the player's own `system_admin` session (no SQL grant), rejects
+   a foreign Origin, and reaches the non-root `operator` shell live. The full
+   chain signup → 01 → 02 → 03 → 04 → 05 → 06 passes.
+   Stage 07 envelope-capture + Stage 08 doc sync/agent rebuild remain.
 7. `verify-chain.py` + patched regression.
 8. Update PROGRESS.md with actual command output.

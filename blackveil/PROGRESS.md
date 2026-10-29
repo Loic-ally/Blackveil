@@ -148,6 +148,18 @@ authorization gate (`terminal.go`, unchanged, still `system_admin`-only) opens.
 signup → 01 → 02 → 03 → 04 → 05 → system_admin, challenge and patched PASS,
 including the Stage 04 prerequisite and single-use/operator-denied/audit checks.
 
+### Stage 06 — restricted Linux access (lab foothold)
+
+No new authorization code: `terminal.go` already gates on `system_admin` +
+Origin and bridges a WebSocket to the non-root `operator` SSH shell. Stage 05 is
+now the player-reachable source of `system_admin`, so the gap closed without
+relaxing the gate. Specification `docs/stages/stage-06-lab-foothold.md`.
+**Verified:** `scripts/verify-chain.py` opens the terminal WebSocket from the
+player's own session after Stage 05 (no SQL grant), rejects a foreign Origin
+(403), completes the 101 handshake and reaches the non-root `operator` shell —
+live, as part of the full signup → 01 → 02 → 03 → 04 → 05 → 06 chain. On this
+Apple Silicon host the guest boots as aarch64 under the VM container's QEMU.
+
 ### Stage 08 — native agent identity binding
 
 The mechanism is implemented in `vm/agent/src/main.rs`, with specification

@@ -14,10 +14,11 @@ import importlib.util
 import os
 import re
 import subprocess
+import time
 import uuid
 from pathlib import Path
 
-from smoke import Client, require
+from smoke import Client, require, ORIGIN
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -31,6 +32,7 @@ def _load(name, filename):
 
 legacy = _load("legacy_check", "verify-legacy.py")
 recovery = _load("recovery_check", "verify-recovery.py")
+vmverify = _load("vm_verify", "vm-verify.py")
 
 NORTH = "4f3e2d1c-0b9a-4876-9d5c-4b3a29180716"
 PLATFORM_INSTALLATION = 4100
@@ -229,6 +231,37 @@ def run():
         require(po_receipt not in str(events), "audit copied the operator recovery secret")
         print("PASS: challenge stage 05 — operator recovery requires Stage 03 receipt + Stage 04 "
               "enrollment, elevates once to system_admin, and opens the terminal authz gate.", flush=True)
+
+        # ---- Stage 06: reach the restricted Linux operator shell ----
+        cookie = next((c.value for c in player.cookies if c.name == "aether_session"), None)
+        require(cookie is not None, "no session cookie available for the terminal")
+        # The terminal rejects a foreign origin even for a system_admin session.
+        denied, status, _ = vmverify.connect_websocket(cookie, "https://untrusted.example")
+        denied.close()
+        require(status == 403, f"terminal accepted a foreign origin: {status}")
+
+        terminal, status, buffered = vmverify.connect_websocket(cookie, ORIGIN)
+        if status == 503:
+            terminal.close()
+            print("SKIP: stage 06 terminal — VM profile not running (run `make vm-up`, then re-run).", flush=True)
+        else:
+            require(status == 101, f"system_admin terminal handshake returned {status}, expected 101")
+            try:
+                # Marker preceded by the command OUTPUT (uid 1000, group operator)
+                # so the PTY echo of the typed command cannot satisfy the match.
+                vmverify.send_websocket_text(terminal, "id -u; id -nG; echo BV_CHAIN_SHELL_OK\r")
+                output, deadline = "", time.monotonic() + 25
+                while "\n1000\noperator\nBV_CHAIN_SHELL_OK\n" not in output.replace("\r", ""):
+                    opcode, payload, buffered = vmverify.read_frame(terminal, buffered)
+                    if opcode == 8:
+                        raise AssertionError("terminal closed before the shell responded")
+                    if opcode == 1:
+                        output += payload.decode("utf-8", "replace")
+                    require(time.monotonic() < deadline, "terminal shell timed out")
+            finally:
+                terminal.close()
+            print("PASS: challenge stage 06 — the elevated player opens the restricted non-root "
+                  "Linux operator shell through the terminal, with no SQL grant.", flush=True)
 
         # ---- Patched mode: the Stage 03 disclosure is closed ----
         legacy.switch("patched")
