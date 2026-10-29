@@ -72,7 +72,9 @@ fencing / boundary items (Requirement 7).
   completion or failure write is rejected, and the result and its notification
   are written in one transaction (a report never completes without its
   notification). Verified by `scripts/verify-fencing.py`.
-- **Database:** ordered transactional migrations 001–010; separate API, auth,
+- **Database:** ordered transactional migrations 001–011 (011 reserves
+  installation ids 4100–4199 so registered workspaces start at 4200 and never
+  collide with a seeded installation number); separate API, auth,
   worker, telemetry and legacy runtime roles with scoped grants. A short-lived
   migrator owns schema changes; runtime services do not receive its credentials.
 
