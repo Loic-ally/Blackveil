@@ -75,7 +75,9 @@ responsible; use a new job ID and compare the resolved number in the response.
 The organizer verification starts challenge and patched guests. It sends one
 valid request, then changes only `legacy_tenant_no` without changing the HMAC.
 Challenge mode must return the other bounded archive; patched mode must reject
-the altered request and accept the canonical request.
+the altered request and accept the canonical request. Verification also
+confirms ordinary registered operators cannot open the browser terminal and
+the guest SSH port is not published on the host.
 
 **Remediation**
 

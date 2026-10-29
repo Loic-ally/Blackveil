@@ -76,6 +76,8 @@ def run() -> None:
     require(status == 201, f"registration failed: {profile}")
     status, me = alice.request("/api/me")
     require(status == 200 and me["role"] == "operator", "registration should create an ordinary operator")
+    status, _ = alice.request("/api/lab/terminal")
+    require(status == 403, "ordinary operators must not enter the restricted Linux lab")
 
     status, dashboard = alice.request("/api/dashboard")
     require(status == 200 and dashboard["assets_total"] == 3, "new tenant should receive three assets")

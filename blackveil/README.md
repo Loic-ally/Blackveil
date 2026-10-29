@@ -28,9 +28,12 @@ jobs, audit events, API documentation, PostgreSQL, Redis, NATS and a worker.
 Challenge weaknesses are not part of this baseline increment.
 
 The disposable Debian guest runs in a non-privileged QEMU container under TCG,
-so no host virtualization package is required. The browser terminal gate and
-the worker's live report-to-agent call are still in progress; `make vm-shell` is
-for local organizer inspection only.
+so no host virtualization package is required. A browser terminal is available
+only to identities with the `system_admin` milestone; ordinary workspace
+registration does not grant it. The terminal reaches the guest through the API
+over the private lab network. `make vm-shell` remains an organizer-only route.
+The worker's live report-to-agent job flow and the preceding identity stages
+that grant the milestone are still in progress.
 
 ## Useful commands
 

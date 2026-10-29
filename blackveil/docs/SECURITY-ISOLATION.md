@@ -26,7 +26,10 @@
   operator login is key-only and has no sudo grant.
 - [x] VM disk is isolated in Docker-managed named volumes and can be reset
   without removing application database state.
-- [ ] Browser-gated operator terminal from the application (Phase 4).
+- [x] Browser terminal requires an authenticated `system_admin` session, uses
+  the API's private SSH bridge, and does not publish guest SSH or agent ports.
+- [x] API mounts VM state as a read-only named volume; only the operator key is
+  group-readable to the API process, and the guest cannot read that volume.
 - [ ] Worker-to-agent report-job integration and replay protection (Phase 4/5).
 - [ ] Organizer validator network and evidence submission protocol (Phase 6).
 - [ ] Independent restart/reset test in CI (still listed as Phase 2 work).

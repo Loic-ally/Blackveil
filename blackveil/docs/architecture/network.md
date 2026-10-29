@@ -7,6 +7,7 @@ flowchart LR
     P[Player browser] -->|HTTPS :443 only| G[aether-gateway]
     G --> W[aether-web]
     G --> A[aether-api]
+    A -->|authenticated WebSocket / private SSH| VM[QEMU Debian VM]
     A --> AU[aether-auth]
     A --> L[aether-legacy]
     A --> T[aether-telemetry]
@@ -33,6 +34,7 @@ flowchart LR
 | API / worker | Redis | TCP 6379 |
 | API / worker | NATS | TCP 4222 |
 | API / worker | Linux VM agent | TCP 18080 on private `lab` network only |
+| API | Linux VM operator SSH | TCP 2222 on private `lab` network only; initiated after a `system_admin` session check |
 | Player network | Any internal service | Denied |
 | Challenge workloads | Validator | Denied; evidence is submitted through a constrained one-way interface |
 
@@ -43,7 +45,9 @@ network joins only the API, worker and QEMU VM service; the gateway and web
 frontend are excluded. QEMU user-mode NAT lets the guest reach only the API and
 worker peers on the internal `lab` network; that network has no public egress.
 Only guest SSH and agent ports are forwarded to the VM container, and neither
-port is host-published.
+port is host-published. The API mounts the named guest-state volume read-only;
+filesystem permissions expose only the restricted operator key to its
+unprivileged service account. The guest SSH key is never sent to the browser.
 
 ## Deployment limitation
 

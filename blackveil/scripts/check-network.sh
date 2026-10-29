@@ -30,11 +30,25 @@ for service in aether-web aether-api aether-worker aether-telemetry aether-db ae
   [ -n "$id" ] || continue
   networks=$(docker inspect --format '{{json .NetworkSettings.Networks}}' "$id")
   case "$networks" in *blackveil_edge*) echo "FAIL: $service is attached to the player network"; exit 1;; esac
+  if [ "$service" = aether-api ] || [ "$service" = aether-worker ]; then
+    case "$networks" in *blackveil_lab_internal*) :;; *) echo "FAIL: $service is not attached to the private lab network"; exit 1;; esac
+  fi
   if [ "$service" = aether-linux-vm ] || [ "$service" = aether-linux-vm-patched ]; then
     case "$networks" in *blackveil_lab_internal*) :;; *) echo "FAIL: $service is not on the private lab network"; exit 1;; esac
     case "$networks" in *blackveil_data_internal*|*blackveil_app_internal*) echo "FAIL: $service is attached to a non-lab application network"; exit 1;; esac
   fi
 done
+
+api=$($compose ps -q aether-api)
+api_mounts=$(docker inspect --format '{{json .Mounts}}' "$api")
+python3 - "$api_mounts" <<'PY'
+import json, sys
+mounts=json.loads(sys.argv[1])
+state=[m for m in mounts if m["Destination"] == "/var/lib/aether-vm"]
+assert len(state) == 1, f"API must have exactly one Linux VM state mount: {state}"
+assert state[0]["Type"] == "volume" and state[0]["Name"] == "blackveil_linux_vm_state", state[0]
+assert state[0]["RW"] is False, f"API Linux VM state mount must be read-only: {state[0]}"
+PY
 
 docker network inspect blackveil_app_internal --format '{{.Internal}}' | grep -qx true || { echo 'FAIL: app network is not internal'; exit 1; }
 docker network inspect blackveil_data_internal --format '{{.Internal}}' | grep -qx true || { echo 'FAIL: data network is not internal'; exit 1; }

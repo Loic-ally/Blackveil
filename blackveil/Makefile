@@ -41,7 +41,7 @@ vm-reset:
 	@./scripts/vm-reset.sh
 
 vm-shell:
-	docker compose --env-file .env -f compose.yaml --profile vm exec aether-linux-vm ssh -i /var/lib/aether-vm/operator_ed25519 -o UserKnownHostsFile=/var/lib/aether-vm/known_hosts -o StrictHostKeyChecking=accept-new -p 2222 operator@127.0.0.1
+	docker compose --env-file .env -f compose.yaml --profile vm exec aether-linux-vm sh -c 'umask 077; cp /var/lib/aether-vm/operator_ed25519 /tmp/operator_ed25519; exec ssh -i /tmp/operator_ed25519 -o UserKnownHostsFile=/var/lib/aether-vm/known_hosts -o StrictHostKeyChecking=accept-new -p 2222 operator@127.0.0.1'
 
 vm-verify:
 	python3 scripts/vm-verify.py

@@ -3,6 +3,8 @@ set -eu
 
 state=/var/lib/aether-vm
 mkdir -p "$state"
+chgrp 10001 "$state"
+chmod 0710 "$state"
 umask 077
 
 case "${AETHER_AGENT_MODE:-challenge}" in
@@ -19,6 +21,8 @@ esac
 if [ ! -s "$state/operator_ed25519" ]; then
   ssh-keygen -q -t ed25519 -N '' -C 'blackveil-linux-operator' -f "$state/operator_ed25519"
 fi
+chmod 0640 "$state/operator_ed25519"
+chmod 0644 "$state/operator_ed25519.pub"
 
 if [ ! -s "$state/overlay.qcow2" ]; then
   qemu-img create -q -f qcow2 -F qcow2 -b /opt/aether/debian-base.qcow2 "$state/overlay.qcow2" 12G
@@ -32,8 +36,24 @@ python3 /opt/aether/render-cloud-init.py \
   --output "$state"
 cloud-localds -f iso "$state/seed.iso" "$state/user-data" "$state/meta-data"
 
+run_qemu() {
+  "$@" &
+  qemu_pid=$!
+  trap 'kill "$qemu_pid" 2>/dev/null || true; wait "$qemu_pid" || true' INT TERM
+  while kill -0 "$qemu_pid" 2>/dev/null; do
+    host_key=$(ssh-keyscan -T 2 -p 2222 -t ed25519 127.0.0.1 2>/dev/null | awk '$2 == "ssh-ed25519" {print $2 " " $3; exit}')
+    if [ -n "$host_key" ]; then
+      printf '%s\n' "$host_key" > "$state/guest_host_ed25519.pub"
+      chmod 0644 "$state/guest_host_ed25519.pub"
+      break
+    fi
+    sleep 1
+  done
+  wait "$qemu_pid"
+}
+
 if [ "$(uname -m)" = aarch64 ]; then
-  exec qemu-system-aarch64 \
+  run_qemu qemu-system-aarch64 \
     -machine virt -accel tcg,thread=multi -cpu max -smp 1 -m 768 \
     -bios /usr/share/AAVMF/AAVMF_CODE.fd \
     -drive if=none,file="$state/overlay.qcow2",format=qcow2,id=hd0 \
@@ -45,7 +65,7 @@ if [ "$(uname -m)" = aarch64 ]; then
     -display none -monitor none -serial stdio -no-reboot
 fi
 
-exec qemu-system-x86_64 \
+run_qemu qemu-system-x86_64 \
   -machine q35,accel=tcg,thread=multi -cpu max -smp 1 -m 768 \
   -bios /usr/share/OVMF/OVMF_CODE_4M.fd \
   -drive if=none,file="$state/overlay.qcow2",format=qcow2,id=hd0 \

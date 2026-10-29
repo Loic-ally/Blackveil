@@ -13,7 +13,7 @@ service contracts are implemented.
 | 1. Repository initialization | Complete | Project layout, trust-boundary definition, first stage spec, Makefile, Compose, CI, reset/setup scripts and network policy are present. |
 | 2. Application MVP | In progress | Web/API/PostgreSQL/Redis/NATS/worker/telemetry run. Ordinary workflows pass the black-box smoke test. Auth is still in the API process; add the separate auth service, service identities, admin flows and remaining integration coverage. |
 | 3. First playable challenge | Not started | Add the first documented challenge flaw only after baseline behavior is working. |
-| 4. Linux integration | In progress | Disposable Debian 13 QEMU guest, restricted `operator` login and Rust agent are implemented; add the browser-gated application terminal and live worker-to-agent jobs. |
+| 4. Linux integration | In progress | Disposable Debian 13 QEMU guest, restricted `operator` login, Rust agent and `system_admin`-gated browser terminal are implemented; add live worker-to-agent jobs and the earlier milestone that grants this role. |
 | 5. Advanced investigation | Not started | Implement worker/agent trust analysis and native service stages. |
 | 6. Final proof | Not started | Add evidence correlation and isolated validator. |
 | 7. Full challenge validation | Not started | Execute organizer walkthrough and reset tests. |
@@ -57,12 +57,22 @@ service contracts are implemented.
   challenge/patched identity-envelope handling. `make vm-verify` exercises both.
 - Linux VM verification passed on the ARM64 development host: both guests booted
   from clean volumes; SSH confirmed the operator is non-root, non-sudo and cannot
-  read the worker key; the challenge accepted a changed unsigned legacy number;
-  the patched agent rejected it. API and worker both reached the agent health
-  endpoint over the private lab network.
+  read the worker key; the API can read the operator key through a read-only
+  mount; the challenge accepted a changed unsigned legacy number; the patched
+  agent rejected it. API and worker both reached the agent health endpoint over
+  the private lab network.
 - After adding the VM, `scripts/check-network.sh` still passed with only gateway
   TCP 443 published; `scripts/smoke.py` passed ordinary signup, tenant isolation,
-  telemetry, incidents, audit, notifications and asynchronous reports.
+  telemetry, incidents, audit, notifications and asynchronous reports; it also
+  confirmed an ordinary operator receives HTTP 403 from the Linux terminal.
+- `scripts/vm-verify.py` passed the gated browser terminal flow through HTTPS and
+  WebSocket: the organizer test grants the stage role, a foreign Origin is
+  rejected, the API pins the guest's ED25519 host key, and the session receives
+  a non-root `operator` shell. The temporary test tenant is deleted afterward.
+- `scripts/vm-reset.sh` passed interactively: it deleted both disposable guest
+  state volumes and restarted the API without removing application data. A
+  cleared-state challenge guest then booted from the pinned Debian image and
+  became healthy with a newly generated operator key and guest host key.
 
 ## Remaining Phase 2 work
 
@@ -77,8 +87,6 @@ service contracts are implemented.
 
 ## Remaining Linux integration work
 
-- Add an application-authenticated browser terminal that becomes available only
-  after the intended async-processing milestone; do not expose the VM's SSH port.
 - Have the worker submit real report envelopes to `aether-agent`, binding job,
   principal and tenant IDs from database state and enforcing replay protection.
 - Add guest restart/reset and guest-host boundary checks to CI on Linux/KVM and

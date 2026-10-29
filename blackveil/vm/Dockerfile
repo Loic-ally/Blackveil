@@ -14,7 +14,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/* \
     && useradd --system --uid 10001 --create-home --home-dir /var/lib/aether-vm --shell /usr/sbin/nologin vmrunner \
     && mkdir -p /opt/aether /var/lib/aether-vm \
-    && chown vmrunner:vmrunner /var/lib/aether-vm \
+    && chown 10001:10001 /var/lib/aether-vm \
     && if [ "$TARGETARCH" = "arm64" ]; then \
          image=debian-13-genericcloud-arm64.qcow2; \
        else \

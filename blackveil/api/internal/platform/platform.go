@@ -32,10 +32,13 @@ var migrationFiles embed.FS
 const sessionCookie = "aether_session"
 
 type Server struct {
-	db           *pgxpool.Pool
-	nats         *nats.Conn
-	cache        *redis.Client
-	publicOrigin string
+	db               *pgxpool.Pool
+	nats             *nats.Conn
+	cache            *redis.Client
+	publicOrigin     string
+	vmSSHAddress     string
+	vmSSHKeyPath     string
+	vmSSHHostKeyPath string
 }
 
 type principal struct {
@@ -87,7 +90,13 @@ func New(ctx context.Context) (*Server, error) {
 		pool.Close()
 		return nil, fmt.Errorf("connect to Redis: %w", err)
 	}
-	return &Server{db: pool, nats: nc, cache: cache, publicOrigin: env("PUBLIC_ORIGIN", "https://aether.blackveil.test")}, nil
+	return &Server{
+		db: pool, nats: nc, cache: cache,
+		publicOrigin:     env("PUBLIC_ORIGIN", "https://aether.blackveil.test"),
+		vmSSHAddress:     env("AETHER_VM_SSH_ADDRESS", "aether-linux-vm:2222"),
+		vmSSHKeyPath:     env("AETHER_VM_SSH_KEY_PATH", "/var/lib/aether-vm/operator_ed25519"),
+		vmSSHHostKeyPath: env("AETHER_VM_SSH_HOST_KEY_PATH", "/var/lib/aether-vm/guest_host_ed25519.pub"),
+	}, nil
 }
 
 func (s *Server) Close() { _ = s.cache.Close(); s.nats.Close(); s.db.Close() }
@@ -100,6 +109,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/auth/login", s.login)
 	mux.HandleFunc("POST /api/auth/logout", s.logout)
 	mux.Handle("GET /api/me", s.auth(http.HandlerFunc(s.me)))
+	mux.Handle("GET /api/lab/terminal", s.auth(http.HandlerFunc(s.terminal)))
 	mux.Handle("GET /api/dashboard", s.auth(http.HandlerFunc(s.dashboard)))
 	mux.Handle("GET /api/assets", s.auth(http.HandlerFunc(s.assets)))
 	mux.Handle("POST /api/assets", s.auth(s.sameOrigin(http.HandlerFunc(s.createAsset))))
@@ -913,7 +923,7 @@ func securityHeaders(next http.Handler) http.Handler {
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 		w.Header().Set("Referrer-Policy", "same-origin")
 		w.Header().Set("Cache-Control", "no-store")
-		w.Header().Set("Content-Security-Policy", "default-src 'self'; connect-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'; object-src 'none'; frame-ancestors 'none'")
+		w.Header().Set("Content-Security-Policy", "default-src 'self'; connect-src 'self' wss://aether.blackveil.test; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'; object-src 'none'; frame-ancestors 'none'")
 		next.ServeHTTP(w, r)
 	})
 }

@@ -7,5 +7,11 @@ read answer
 [ "$answer" = RESET-VM ] || { echo 'VM reset cancelled.'; exit 1; }
 
 docker compose --env-file .env -f compose.yaml --profile vm --profile vm-verify rm --stop --force aether-linux-vm aether-linux-vm-patched >/dev/null 2>&1 || true
-docker volume rm blackveil_linux_vm_state blackveil_linux_vm_patched_state >/dev/null 2>&1 || true
-echo 'Linux VM state and operator keys removed. Application data is unchanged.'
+docker compose --env-file .env -f compose.yaml rm --stop --force aether-api >/dev/null 2>&1 || true
+for volume in blackveil_linux_vm_state blackveil_linux_vm_patched_state; do
+  if docker volume inspect "$volume" >/dev/null 2>&1; then
+    docker volume rm "$volume" >/dev/null
+  fi
+done
+docker compose --env-file .env -f compose.yaml up -d --build aether-api
+echo 'Linux VM state and operator keys removed. The API was restarted; application data is unchanged.'

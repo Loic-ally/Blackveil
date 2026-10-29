@@ -1,0 +1,178 @@
+.page {
+  min-height: 100vh;
+  background: #172021;
+  color: #e7ece6;
+}
+
+.header {
+  height: 76px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 5vw;
+  border-bottom: 1px solid #34403d;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: #f0f1e9;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: .08em;
+
+  small {
+    display: block;
+    margin-top: 5px;
+    color: #91a097;
+    font-size: 8px;
+    letter-spacing: .16em;
+  }
+}
+
+.mark {
+  display: grid;
+  width: 32px;
+  height: 32px;
+  place-items: center;
+  border: 1px solid #68776e;
+  color: #bd6942;
+  font: 18px Georgia, serif;
+}
+
+.eyebrow,
+.kicker {
+  color: #a5b3aa;
+  font: 9px/1.4 monospace;
+  letter-spacing: .14em;
+}
+
+.back {
+  color: #d5ddd5;
+  font-size: 11px;
+}
+
+.content {
+  width: min(1000px, calc(100% - 40px));
+  margin: 0 auto;
+  padding: 70px 0 50px;
+
+  h1 {
+    margin: 14px 0 9px;
+    font-size: clamp(28px, 4vw, 42px);
+    font-weight: 500;
+    letter-spacing: -.04em;
+  }
+}
+
+.kicker {
+  color: #c17752;
+}
+
+.lede {
+  max-width: 570px;
+  margin: 0 0 28px;
+  color: #aab6af;
+  font-size: 13px;
+  line-height: 1.7;
+}
+
+.terminal {
+  overflow: hidden;
+  border: 1px solid #3b4844;
+  background: #0d1414;
+  box-shadow: 0 18px 55px #080c0c66;
+}
+
+.terminalHead {
+  display: flex;
+  min-height: 42px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 0 15px;
+  border-bottom: 1px solid #303b38;
+  color: #96a49b;
+  font: 9px monospace;
+  letter-spacing: .07em;
+
+  span:first-child {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+  }
+
+  i {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: #b08b5c;
+  }
+
+  .live {
+    background: #80b797;
+    box-shadow: 0 0 10px #80b79777;
+  }
+}
+
+.output {
+  min-height: 360px;
+  max-height: 58vh;
+  overflow: auto;
+  margin: 0;
+  padding: 19px;
+  color: #c1d4c5;
+  font: 12px/1.65 "SFMono-Regular", Consolas, monospace;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.command {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 12px 16px;
+  border-top: 1px solid #303b38;
+
+  > span {
+    color: #c17752;
+    font: 16px monospace;
+  }
+
+  input {
+    min-width: 0;
+    flex: 1;
+    border: 0;
+    outline: 0;
+    background: transparent;
+    color: #e7ece6;
+    font: 12px monospace;
+
+    &::placeholder { color: #73817a; }
+  }
+
+  button {
+    border: 1px solid #53615a;
+    background: #293632;
+    color: #e7ece6;
+    padding: 7px 12px;
+    font-size: 10px;
+
+    &:disabled { cursor: not-allowed; opacity: .45; }
+  }
+}
+
+.footnote {
+  margin-top: 13px;
+  color: #84938b;
+  font: 9px/1.6 monospace;
+}
+
+@media (max-width: 600px) {
+  .header { height: 66px; padding: 0 18px; }
+  .eyebrow { display: none; }
+  .content { width: calc(100% - 30px); padding-top: 45px; }
+  .output { min-height: 300px; padding: 13px; font-size: 11px; }
+  .terminalHead { padding: 0 10px; font-size: 8px; }
+}
