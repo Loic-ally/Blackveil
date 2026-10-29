@@ -8,7 +8,8 @@
 - [x] `edge` is the only non-internal Docker network; only the gateway joins it.
 - [x] `app`, `data` and `lab` Docker networks are marked internal.
 - [x] The gateway joins `edge` and `app`, never `data`.
-- [x] The API joins `app` and `data`; the web joins only `app`.
+- [x] The API joins `app`, `data` and `lab` (lab only for the terminal SSH
+  bridge); the web joins only `app`.
 - [x] Worker joins `data` and `lab`; telemetry joins only `data`.
 - [x] No Docker socket, host device or writable host filesystem is mounted.
 - [x] No container uses `privileged: true`.
@@ -34,9 +35,14 @@
   group-readable to the API process, and the guest cannot read that volume.
 - [x] Worker-to-agent archive delivery uses database-derived identities and bounded responses.
 - [x] Expired lease recovery for reports interrupted after a worker claim.
-- [ ] Replay protection for worker-to-agent envelopes (Phase 4/5).
+- [x] Replay protection for worker-to-agent envelopes in **patched** mode only
+  (signed `issued_at`, 120 s window, single-use signature cache held in agent
+  memory). Challenge mode intentionally has none (Stage 08). See
+  `organizer/remaining-risks.md` for the restart caveat.
 - [ ] Organizer validator network and evidence submission protocol (Phase 6).
-- [ ] Independent restart/reset test in CI (still listed as Phase 2 work).
+- [x] Automated restart/reset test: `make reset-verify` (local, disposable
+  Compose project). Not run in CI.
+- [ ] Restart/reset test in CI.
 - [ ] Image digest pinning and automated image vulnerability scanning.
 
 The network assertions in the checked items are enforced by
