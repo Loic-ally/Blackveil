@@ -35,12 +35,44 @@ services:
     security_opt: [no-new-privileges:true]
     restart: unless-stopped
 
+  aether-auth:
+    build:
+      context: ./api
+      dockerfile: Dockerfile
+    environment:
+      AETHER_MODE: auth
+      LISTEN_ADDR: ":8080"
+      DATABASE_URL: postgres://${AETHER_POSTGRES_USER:-aether}:${AETHER_DB_PASSWORD}@aether-db:5432/${AETHER_POSTGRES_DB:-aether}?sslmode=disable
+      NATS_URL: nats://aether-bus:4222
+      REDIS_URL: redis://aether-cache:6379/0
+      PUBLIC_ORIGIN: ${PUBLIC_ORIGIN:-https://aether.blackveil.test}
+    depends_on:
+      aether-db:
+        condition: service_healthy
+      aether-bus:
+        condition: service_started
+      aether-cache:
+        condition: service_healthy
+    networks: [app, data]
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8080/healthz >/dev/null || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+      start_period: 15s
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    restart: unless-stopped
+
   aether-api:
     build:
       context: ./api
       dockerfile: Dockerfile
     environment:
       AETHER_MODE: api
+      AETHER_AUTH_URL: http://aether-auth:8080
       LISTEN_ADDR: ":8080"
       DATABASE_URL: postgres://${AETHER_POSTGRES_USER:-aether}:${AETHER_DB_PASSWORD}@aether-db:5432/${AETHER_POSTGRES_DB:-aether}?sslmode=disable
       NATS_URL: nats://aether-bus:4222
@@ -50,6 +82,8 @@ services:
       AETHER_VM_SSH_KEY_PATH: /var/lib/aether-vm/operator_ed25519
       AETHER_VM_SSH_HOST_KEY_PATH: /var/lib/aether-vm/guest_host_ed25519.pub
     depends_on:
+      aether-auth:
+        condition: service_healthy
       aether-db:
         condition: service_healthy
       aether-bus:

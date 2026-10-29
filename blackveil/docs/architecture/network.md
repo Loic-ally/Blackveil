@@ -7,6 +7,7 @@ flowchart LR
     P[Player browser] -->|HTTPS :443 only| G[aether-gateway]
     G --> W[aether-web]
     G --> A[aether-api]
+    G -->|credential operations| AU[aether-auth]
     A -->|authenticated WebSocket / private SSH| VM[QEMU Debian VM]
     A --> AU[aether-auth]
     A --> L[aether-legacy]

@@ -5,7 +5,7 @@ cd "$(dirname "$0")/.."
 compose='docker compose --env-file .env -f compose.yaml'
 $compose config --quiet
 
-for service in aether-web aether-api aether-worker aether-telemetry aether-db aether-cache aether-bus aether-linux-vm aether-linux-vm-patched; do
+for service in aether-web aether-api aether-auth aether-worker aether-telemetry aether-db aether-cache aether-bus aether-linux-vm aether-linux-vm-patched; do
   id=$($compose ps -q "$service")
   [ -n "$id" ] || continue
   ports=$(docker inspect --format '{{json .HostConfig.PortBindings}}' "$id")
@@ -25,7 +25,7 @@ PY
 gateway_networks=$(docker inspect --format '{{json .NetworkSettings.Networks}}' "$gateway")
 case "$gateway_networks" in *blackveil_data_internal*) echo 'FAIL: gateway is attached to the data network'; exit 1;; esac
 case "$gateway_networks" in *blackveil_lab_internal*) echo 'FAIL: gateway is attached to the Linux lab network'; exit 1;; esac
-for service in aether-web aether-api aether-worker aether-telemetry aether-db aether-cache aether-bus aether-linux-vm aether-linux-vm-patched; do
+for service in aether-web aether-api aether-auth aether-worker aether-telemetry aether-db aether-cache aether-bus aether-linux-vm aether-linux-vm-patched; do
   id=$($compose ps -q "$service")
   [ -n "$id" ] || continue
   networks=$(docker inspect --format '{{json .NetworkSettings.Networks}}' "$id")

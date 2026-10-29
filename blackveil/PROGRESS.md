@@ -3,7 +3,7 @@
 ## Current milestone
 
 Phase 1 is complete. Phase 2 has a working local application baseline and remains
-in progress until the remaining identity/auth split, admin workflow, and full
+in progress until the remaining admin workflow and full
 service contracts are implemented.
 
 ## Milestones
@@ -11,7 +11,7 @@ service contracts are implemented.
 | Phase | State | Evidence / next action |
 |---|---|---|
 | 1. Repository initialization | Complete | Project layout, trust-boundary definition, first stage spec, Makefile, Compose, CI, reset/setup scripts and network policy are present. |
-| 2. Application MVP | In progress | Web/API/PostgreSQL/Redis/NATS/worker/telemetry run. Ordinary workflows pass the black-box smoke test. Auth is still in the API process; add the separate auth service, service identities, admin flows and remaining integration coverage. |
+| 2. Application MVP | In progress | Web/API/PostgreSQL/Redis/NATS/worker/telemetry run. Ordinary workflows pass the black-box smoke test. Authentication runs in its own service and worker service identities exist; add admin flows, the legacy service and remaining integration coverage. |
 | 3. First playable challenge | Not started | Add the first documented challenge flaw only after baseline behavior is working. |
 | 4. Linux integration | In progress | Disposable Debian 13 QEMU guest, restricted `operator` login, Rust agent and `system_admin`-gated browser terminal are implemented; Live archive reports now use the worker and VM agent; the earlier milestone granting access is pending. |
 | 5. Advanced investigation | Not started | Implement worker/agent trust analysis and native service stages. |
@@ -76,8 +76,7 @@ service contracts are implemented.
 
 ## Remaining Phase 2 work
 
-- Split authentication into the required `aether-auth` process with a defined
-  service-to-service contract.
+- Add dedicated database roles so the auth/API process boundary also restricts database authority.
 - Add the legacy compatibility service and independent service-identity model.
 - Add role enforcement, invitations/user management, and tenant-level admin
   functions.
@@ -102,3 +101,11 @@ service contracts are implemented.
   report denial, audit provenance, CSV content and completion notification.
 - Go protocol tests passed for both signature modes, response tenant mismatch
   rejection and redirect rejection. The production frontend build passed.
+
+## Authentication service split
+
+- `aether-auth` owns public credential routes and private session resolution.
+  The API resolves every session through that service and fails closed on errors.
+- Auth has no lab network membership or VM key mount, and no host-published port.
+- Unit checks cover revoked/malformed identities, unknown roles and service
+  failure. Live signup/login/logout and archive-delivery regressions are exercised.

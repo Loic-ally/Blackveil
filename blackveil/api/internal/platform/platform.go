@@ -100,9 +100,6 @@ func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", s.health)
 	mux.HandleFunc("GET /api/docs", s.docs)
-	mux.HandleFunc("POST /api/auth/register", s.register)
-	mux.HandleFunc("POST /api/auth/login", s.login)
-	mux.HandleFunc("POST /api/auth/logout", s.logout)
 	mux.Handle("GET /api/me", s.auth(http.HandlerFunc(s.me)))
 	mux.Handle("GET /api/lab/terminal", s.auth(http.HandlerFunc(s.terminal)))
 	mux.Handle("GET /api/dashboard", s.auth(http.HandlerFunc(s.dashboard)))
@@ -248,7 +245,7 @@ func (s *Server) logout(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(204)
 }
 
-func (s *Server) auth(next http.Handler) http.Handler {
+func (s *Server) localAuth(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		c, err := r.Cookie(sessionCookie)
 		if err != nil {
@@ -875,7 +872,11 @@ func Run() error {
 		return server.runTelemetry(ctx)
 	}
 	addr := env("LISTEN_ADDR", ":8080")
-	httpServer := &http.Server{Addr: addr, Handler: server.Handler(), ReadHeaderTimeout: 5 * time.Second, IdleTimeout: 60 * time.Second}
+	handler := server.Handler()
+	if mode == "auth" {
+		handler = server.AuthHandler()
+	}
+	httpServer := &http.Server{Addr: addr, Handler: handler, ReadHeaderTimeout: 5 * time.Second, IdleTimeout: 60 * time.Second}
 	log.Printf("AETHER %s listening on %s", mode, addr)
 	return httpServer.ListenAndServe()
 }
