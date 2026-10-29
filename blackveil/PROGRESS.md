@@ -11,17 +11,22 @@ AETHER has an implemented application baseline. The playable challenge currently
 chains ordinary signup → Stage 01 historical export → Stage 02 administrator
 recovery → `tenant_admin` in the player's own workspace.
 
-**The application-side chain is complete: ordinary signup → Stage 01 → 02 → 03 →
-04 → 05 reaches `system_admin` with no organizer action, and the Linux terminal
-authorization gate opens.** Stages 03 (historical reconstruction), 04
-(reporting-identity enrollment) and 05 (operator recovery, the former missing
-`tenant_admin → system_admin` bridge) are implemented and live-verified by
-`scripts/verify-chain.py` in challenge and patched modes against the full stack.
-Remaining: the VM-side stages — Stage 06 (reach the operator shell through the
-existing terminal), Stage 07 (in-guest agent discovery / capture a worker-signed
-envelope) and Stage 08 integration (already-implemented agent mechanism, doc
-sync, rebuild), plus the patched-mode VM regression. The VM fixtures, terminal
-bridge and Stage 08 agent mechanism already exist.
+**BLACK VEIL is playable Stage 01 through Stage 08 with no organizer action.**
+The full chain — ordinary signup → Stage 01 historical export → 02 administrator
+recovery → 03 historical reconstruction → 04 reporting-identity enrollment → 05
+operator recovery (`system_admin`) → 06 restricted Linux operator shell → 07
+agent discovery / retained capture → 08 agent identity confusion — is implemented
+and live-verified end-to-end by `scripts/verify-chain.py` against the full
+running stack, using only player interfaces (no DB edits, no injected
+credentials, no organizer role grants). Patched mode closes the Stage 03/04/05
+disclosures and the Stage 08 substitution. Stages 03, 04, 05 and the Stage 07
+capture are new; Stage 06 reuses the existing terminal; the Stage 08 agent
+mechanism already existed and is now player-reachable.
+
+Remaining (separate in-flight workstream, not this chain): the worker/agent
+anti-replay timestamp work in the working tree (`main.rs`, `archive.go`,
+`verify-agent.py`), its protocol-doc sync, and the destructive reset / lease
+fencing / boundary items (Requirement 7).
 
 ## Milestones
 
@@ -29,9 +34,9 @@ bridge and Stage 08 agent mechanism already exist.
 |---|---|---|
 | 1. Repository initialization | Complete | Separate project, Compose, Makefile, setup/reset scripts, architecture and stage specifications, CI workflow. |
 | 2. Application MVP | In progress | Auth, tenant-scoped business workflows, team administration, reports and audit implemented. Tenant settings absent. |
-| 3. First playable challenge | Partial: Stages 01–02 implemented | Signup-to-tenant-admin chain exists in challenge mode, with patched controls. Administrator-to-guest progression absent. |
-| 4. Linux integration | Implemented infrastructure; progression incomplete | Debian QEMU guest, restricted operator, Rust agent, gated browser terminal and live archive reporting implemented. Guest access still needs an earlier challenge stage. |
-| 5. Advanced investigation | Partial | Stage 08 has a specification, native agent mechanism and organizer verifier. Intermediate worker/guest investigation stages and player-accessible prerequisites remain. |
+| 3. First playable challenge | Stages 01–08 playable | Signup → tenant_admin → system_admin → Linux shell → agent identity confusion, challenge and patched, live-verified by `scripts/verify-chain.py`. |
+| 4. Linux integration | Progression complete | Debian QEMU guest, restricted operator, Rust agent, gated terminal and archive reporting implemented; guest access now reached via Stages 05–06 with no organizer action. |
+| 5. Advanced investigation | Player-reachable | Stage 08 agent mechanism is now reached through Stages 03–07 (reconstruction, enrollment, operator recovery, foothold, retained capture). Final evidence-correlation flow (Phase 6) still absent. |
 | 6. Final proof | Not implemented | No final evidence-correlation flow or isolated final validator found. |
 | 7. Full challenge validation | Partial | Component/integration scripts and CI exist; no complete player walkthrough, destructive reset/replay validation or blind playtest. |
 | 8. Security hardening | Partial | Network separation, runtime database roles, restricted guest and SSH host pinning exist. Complete boundary audit and remaining replay/lease/reset cases are unfinished. |
@@ -160,6 +165,20 @@ player's own session after Stage 05 (no SQL grant), rejects a foreign Origin
 live, as part of the full signup → 01 → 02 → 03 → 04 → 05 → 06 chain. On this
 Apple Silicon host the guest boots as aarch64 under the VM container's QEMU.
 
+### Stage 07 — native service investigation (agent discovery)
+
+Implemented via `vm/render-cloud-init.py` (a retained, operator-readable capture
+of one legitimate worker-signed North Works request under
+`/var/lib/aether-migration/last-archive-request.json`), with specification
+`docs/stages/stage-07-agent-discovery.md`. The capture is a single signed
+message, not the signing key or tenant map (both remain `root:aether-agent`,
+unreadable by `operator`). It is the valid envelope Stage 08 manipulates.
+**Verified:** `scripts/verify-chain.py` reads it over the operator SSH, confirms
+`GET /v1/build`, confirms the captured North Works envelope, and confirms the
+operator cannot read the worker key. The patched sample's signing projection
+matches the timestamp-extended agent in the working tree (the in-flight
+anti-replay workstream).
+
 ### Stage 08 — native agent identity binding
 
 The mechanism is implemented in `vm/agent/src/main.rs`, with specification
@@ -238,6 +257,13 @@ historical reports, not fresh verification of the entire current working tree.
 smoke/team/legacy/recovery/database-role/network checks, lifecycle verification
 with `--restart-app`, worker archive checks and VM/terminal verification, followed
 by volume teardown. Workflow presence is not evidence of a successful CI run.
+
+`scripts/verify-chain.py` (`make chain-verify`) is the player-path verifier: it
+drives signup → Stages 01–08 through the real HTTP, WebSocket terminal and guest
+agent interfaces with no DB edits or injected privileges, and asserts the patched
+Stage 03/04/05 disclosures and the patched-agent Stage 08 substitution are all
+refused. It requires the full stack plus `make vm-up` (the VM fixtures); the
+guest boots as aarch64 under TCG on Apple Silicon.
 
 `scripts/verify-lifecycle.py` queues 24 reports across two temporary tenants,
 uses three workers, checks claims/results/notifications/isolation, cleans its

@@ -202,6 +202,18 @@ organizer walkthrough entry → unintended-bypass check → next stage reachable
    WebSocket from the player's own `system_admin` session (no SQL grant), rejects
    a foreign Origin, and reaches the non-root `operator` shell live. The full
    chain signup → 01 → 02 → 03 → 04 → 05 → 06 passes.
-   Stage 07 envelope-capture + Stage 08 doc sync/agent rebuild remain.
+7. Stage 07 (agent discovery + retained operator-readable worker-signed capture,
+   added to `vm/render-cloud-init.py`, spec) and Stage 08 (already-implemented
+   agent mechanism, now player-reachable) — **implemented/verified**: both guests
+   re-provisioned with the capture; `verify-chain.py` runs the full chain live —
+   challenge 01→08 PASS (the number substitution returns the foreign archive) and
+   the patched agent refuses the substitution. **BLACK VEIL is playable Stage 01
+   through Stage 08 with no organizer action.**
+
+Remaining (outside this chain): the worker/agent anti-replay timestamp work in
+the working tree (`main.rs`, `archive.go`, `verify-agent.py`) is a separate
+in-flight workstream; `render-cloud-init.py`'s patched sample projection matches
+that timestamp-extended agent. Protocol-doc sync for that extension and the
+destructive reset/lease/boundary items (Requirement 7) belong to it.
 7. `verify-chain.py` + patched regression.
 8. Update PROGRESS.md with actual command output.

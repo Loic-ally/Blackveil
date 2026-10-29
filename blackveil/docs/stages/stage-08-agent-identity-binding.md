@@ -31,6 +31,16 @@ archive without including that number in the signed projection or checking the
 UUID-to-number mapping. Patched mode includes the number in the HMAC and derives
 the accepted number from the UUID mapping.
 
+**Player prerequisite path (Stages 06–07)**
+
+The player reaches the `operator` shell through Stages 01–06 (no organizer
+action) and, in Stage 07, reads a retained operator-readable capture of one
+legitimate worker-signed request (North Works) left under
+`/var/lib/aether-migration/`. This capture — not the signing key — is the valid
+envelope this stage manipulates: the player substitutes only `legacy_tenant_no`
+and resubmits it to the agent at `127.0.0.1:8080`. `scripts/verify-chain.py`
+exercises exactly this path end-to-end.
+
 **Realistic origin**
 
 The reporting worker migrated to UUID tenant identities, while a Rust archive

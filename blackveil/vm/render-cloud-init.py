@@ -1,7 +1,11 @@
 #!/usr/bin/env python3
 import argparse
 import base64
+import hashlib
+import hmac
 import json
+import secrets
+import time
 from pathlib import Path
 
 TENANTS = (
@@ -85,6 +89,33 @@ def main() -> None:
     ]
     for legacy, content in ARCHIVES.items():
         files.append(block(f"/var/lib/aether-agent/archive-{legacy}.json", content + "\n", "0600"))
+
+    # Stage 07 (BV-07-AGENT-DISCOVERY) evidence: a retained, operator-readable
+    # capture of one legitimate worker-signed archive request (North Works,
+    # installation 4101). This is a captured message, NOT the signing key: the
+    # operator cannot forge a new envelope, but in challenge mode the signature
+    # covers only (job_id, principal, tenant_uuid), so substituting
+    # legacy_tenant_no still selects a foreign archive — the Stage 08 step the
+    # player must perform. The patched agent signs the number and enforces the
+    # timestamp, so both substitution and replay of this capture are refused.
+    job_id = "mig-capture-" + secrets.token_hex(4)
+    principal = "svc:aether-reporting"
+    sample_uuid, sample_no = TENANTS[0]  # North Works, 4101
+    issued_at = int(time.time())
+    if args.mode == "patched":
+        projection = f"{job_id}\n{principal}\n{sample_uuid}\n{sample_no}\n{issued_at}"
+    else:
+        projection = f"{job_id}\n{principal}\n{sample_uuid}"
+    signature = hmac.new(bytes.fromhex(args.key), projection.encode(), hashlib.sha256).hexdigest()
+    sample = json.dumps({
+        "job_id": job_id, "principal": principal, "tenant_uuid": sample_uuid,
+        "legacy_tenant_no": sample_no, "issued_at": issued_at, "signature": signature,
+    }, indent=2)
+    files.append(block("/var/lib/aether-migration/last-archive-request.json", sample + "\n", "0644"))
+    files.append(block("/var/lib/aether-migration/README",
+        "Retained capture of the last reporting-archive request submitted to "
+        "aether-agent during migration validation. The agent at 127.0.0.1:8080 "
+        "serves POST /v1/legacy/archive; GET /v1/build reports the protocol.\n", "0644"))
 
     cloud_config = "\n".join([
         "#cloud-config",
