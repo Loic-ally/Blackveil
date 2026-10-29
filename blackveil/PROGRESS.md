@@ -1,15 +1,13 @@
 # BLACK VEIL build progress
 
-Last source and local-stack review: **2026-10-29**. This inventory reflects the
-committed tree; the worker/agent replay-protection changes are now committed and
-verified. Implementation, previous verification reports and checks rerun during this review
-are distinguished below; running containers do not prove they contain every local change.
+Last source and local-stack review: **2026-10-29**. Implementation and the
+commands rerun during this review are distinguished below; the exact commands
+and exit codes are in `organizer/full-chain-validation.md`.
 
 ## Current milestone
 
-AETHER has an implemented application baseline. The playable challenge currently
-chains ordinary signup → Stage 01 historical export → Stage 02 administrator
-recovery → `tenant_admin` in the player's own workspace.
+AETHER has an implemented application baseline and Stages 01–08 are playable.
+Stages 09–15 are not implemented.
 
 **BLACK VEIL is playable Stage 01 through Stage 08 with no organizer action.**
 The full chain — ordinary signup → Stage 01 historical export → 02 administrator
@@ -21,25 +19,23 @@ running stack, using only player interfaces (no DB edits, no injected
 credentials, no organizer role grants). Patched mode closes the Stage 03/04/05
 disclosures and the Stage 08 substitution. Stages 03, 04, 05 and the Stage 07
 capture are new; Stage 06 reuses the existing terminal; the Stage 08 agent
-mechanism already existed and is now player-reachable.
+mechanism already existed and is now player-reachable. Stages 06–08 are verified
+as commands typed into the player's own WebSocket terminal session.
 
-Remaining (separate in-flight workstream, not this chain): the worker/agent
-anti-replay timestamp work in the working tree (`main.rs`, `archive.go`,
-`verify-agent.py`), its protocol-doc sync, and the destructive reset / lease
-fencing / boundary items (Requirement 7).
+Open items: `organizer/remaining-risks.md`.
 
 ## Milestones
 
 | Phase | State | Actual implementation / remaining work |
 |---|---|---|
 | 1. Repository initialization | Complete | Separate project, Compose, Makefile, setup/reset scripts, architecture and stage specifications, CI workflow. |
-| 2. Application MVP | In progress | Auth, tenant-scoped business workflows, team administration, reports and audit implemented. Tenant settings absent. |
+| 2. Application MVP | In progress | Auth, tenant-scoped business workflows, team administration, reports, audit and a read-only tenant settings view (`GET /api/v2/tenant`) implemented. Equipment editing/deletion absent. |
 | 3. First playable challenge | Stages 01–08 playable | Signup → tenant_admin → system_admin → Linux shell → agent identity confusion, challenge and patched, live-verified by `scripts/verify-chain.py`. |
 | 4. Linux integration | Progression complete | Debian QEMU guest, restricted operator, Rust agent, gated terminal and archive reporting implemented; guest access now reached via Stages 05–06 with no organizer action. |
 | 5. Advanced investigation | Player-reachable | Stage 08 agent mechanism is now reached through Stages 03–07 (reconstruction, enrollment, operator recovery, foothold, retained capture). Final evidence-correlation flow (Phase 6) still absent. |
 | 6. Final proof | Not implemented | No final evidence-correlation flow or isolated final validator found. |
-| 7. Full challenge validation | Partial | Component/integration scripts and CI exist; no complete player walkthrough, destructive reset/replay validation or blind playtest. |
-| 8. Security hardening | Partial | Network separation, runtime database roles, restricted guest and SSH host pinning exist. Complete boundary audit and remaining replay/lease/reset cases are unfinished. |
+| 7. Full challenge validation | Partial | Player-equivalent chain verifier (Stages 01–08), organizer walkthrough (`docs/WALKTHROUGH.md`) and disposable reset/restart verifier (`make reset-verify`) exist. No blind playtest; reset verification is not in CI. |
+| 8. Security hardening | Partial | Network separation, runtime database roles, restricted guest, SSH host pinning, patched-mode anti-replay and lease fencing exist; audit in `organizer/security-isolation-audit.md`. Image digest pinning and vulnerability scanning absent. |
 | 9. Difficulty tuning | Not implemented | No completed blind playtest or published scoring rubric found. |
 
 ## Implemented application
@@ -118,10 +114,10 @@ caller-supplied installation number without binding it to the session tenant
 the `svc:aether-reporting` principal, and the installation-4100 platform-operator
 recovery receipt (its SHA-256 matches the stored hash, so it is a usable Stage 05
 artifact). Patched mode resolves the caller's own canonical number only. This
-stage grants no role or enrollment. **Verified:** `go build`/`go vet`/`go test`
-(including `migrationLookupNumber`) and application of migrations 001–008 on
-Postgres 16 with grant, cross-tenant-read and receipt-integrity checks. Live
-HTTP verification (`scripts/verify-reconstruction.py`) is not yet written/run.
+stage grants no role or enrollment. **Previously reported:** `go test` (including
+`migrationLookupNumber`) and live by the Stage 03 / patched-03 sections of
+`scripts/verify-chain.py` (receipt hash-checked against the stored value; no
+role or terminal access gained). There is no separate reconstruction script.
 
 ### Stage 04 — reporting-identity enrollment
 
@@ -177,11 +173,11 @@ of one legitimate worker-signed North Works request under
 `docs/stages/stage-07-agent-discovery.md`. The capture is a single signed
 message, not the signing key or tenant map (both remain `root:aether-agent`,
 unreadable by `operator`). It is the valid envelope Stage 08 manipulates.
-**Verified:** `scripts/verify-chain.py` reads it over the operator SSH, confirms
-`GET /v1/build`, confirms the captured North Works envelope, and confirms the
-operator cannot read the worker key. The patched sample's signing projection
-matches the timestamp-extended agent in the working tree (the in-flight
-anti-replay workstream).
+**Verified:** `scripts/verify-chain.py`, inside the player's WebSocket terminal,
+confirms `GET /v1/build`, reads the captured North Works envelope, and confirms
+`cat` of the worker key and tenant map fails with "Permission denied". The
+patched sample's signing projection matches the committed timestamp-extended
+agent.
 
 ### Stage 08 — native agent identity binding
 
@@ -194,11 +190,11 @@ UUID mapping. This yields bounded archive access, not guest root or host access.
 The worker derives its service identity from the database and checks the agent's
 response identity before delivering CSV and recording provenance.
 
-**Anti-replay implementation (committed and verified):** the worker adds
+**Anti-replay implementation (source):** the worker adds
 `issued_at`; patched-mode HMAC signs it with `legacy_tenant_no`. The patched Rust
 agent accepts timestamps within 120 seconds and rejects repeated signatures
 (case-normalized). Challenge mode retains its unsigned-field behavior and does
-not enforce replay protection. **Verified:** `go test` (worker projection incl.
+not enforce replay protection. **Previously reported:** `go test` (worker projection incl.
 `issued_at`) and `vm/verify-agent.py` run against the rebuilt patched guest —
 the patched agent rejects a substituted number, a replayed (case-flipped)
 signature and an expired (`issued_at` 600s old) envelope. The `accept_once` cache
@@ -206,10 +202,10 @@ is process-local by design: the `operator` cannot restart the agent and a
 per-connection panic does not restart the process, so persistent replay storage
 is not required (documented in `vm/agent/README.md` and the Stage 08 spec).
 
-No Stage 03–07 specifications or implemented progression connecting Stage 02 to
-Stage 08 were found. The organizer verifier signs fixtures with organizer-held
-credentials; it does not establish that a player can obtain the required valid
-envelope through the intended investigation path.
+`vm/verify-agent.py` signs fixtures with the organizer-held key; it checks the
+agent mechanism only. The player path to a valid envelope (Stages 03–07) is
+established separately by `scripts/verify-chain.py`, which submits the retained
+capture and the number-substituted copy from the player's terminal.
 
 ## Infrastructure and isolation
 
@@ -229,80 +225,28 @@ envelope through the intended investigation path.
   patched guest and volume.
 - `make reset` removes application and VM volumes after explicit confirmation.
   `make vm-reset` removes both guest states/keys and recreates the API while
-  retaining application data. Scripts exist; full reset correctness is not
-  established by CI teardown alone.
+  retaining application data. `make reset-verify` exercises both, plus guest and
+  agent restarts, in a disposable Compose project and reruns the full chain after
+  each (see `organizer/full-chain-validation.md`).
 - No `aether.blackveil.test` entry was found in `/etc/hosts` during this review.
   Setup prints the mapping to add; browser hostname readiness remains local
   setup work.
 
 ## Verification status
 
-### Rerun during the 2026-10-29 review
+Current commands, exit codes and remaining gaps are recorded in
+[organizer/full-chain-validation.md](organizer/full-chain-validation.md).
+Earlier verification claims in this file describe historical reports; they are
+not evidence that this working tree or its deployed images passed a fresh run.
+Stages 01–08 are implemented. Stages 09–15 remain unimplemented.
 
-- `go test ./...`: passed on the current Go working tree.
-- `go vet ./...`: passed.
-- `docker compose config --quiet`: passed.
-- `scripts/check-network.sh`: passed; only gateway is host-published and VM
-  ports remain private.
-- `docker compose ps`: application services and both VM fixtures were running;
-  services with health checks reported healthy. Images were not rebuilt, so
-  this does not verify deployment of the local anti-replay changes.
+The full-chain target requires already-running challenge and patched guests.
+Stages 06–08 use one authenticated player WebSocket session, including protocol
+discovery and archive substitution. Organizer SQL/SSH is limited to setup,
+cleanup and independent assertions. The disposable reset verifier covers fresh
+deployment, guest reboot, actual agent-only restart, VM reset and full reset,
+with a full chain after each. A test-only sudo rule is injected into the copied
+cloud-init renderer for the agent-only restart; the boot ID must stay unchanged.
 
-### Previously recorded results — not rerun during this review
-
-The previous progress log reported successful production web build, dependency
-checks, application smoke tests, team administration, Stages 01–02 in both
-identity modes, database grants, live archive delivery, worker interruption
-recovery, persistent application restart with three competing workers, VM
-protocol/terminal checks and an interactive VM reset. These are retained as
-historical reports, not fresh verification of the entire current working tree.
-
-### Automated coverage present in the repository
-
-`.github/workflows/blackveil.yml` configures Go tests, web build, service startup,
-smoke/team/legacy/recovery/database-role/network checks, lifecycle verification
-with `--restart-app`, worker archive checks and VM/terminal verification, followed
-by volume teardown. Workflow presence is not evidence of a successful CI run.
-
-`scripts/verify-chain.py` is the player-path verifier, with two explicit scopes
-(Requirement 3):
-
-- `make web-chain-verify` (`--web`) drives signup → Stages 01–05 plus the patched
-  03/04/05 regressions through the real HTTP interfaces. The Linux guest is not
-  required, so this runs in ordinary CI.
-- `make chain-verify` (default) drives signup → Stages 01–08 through the real
-  HTTP, WebSocket terminal and guest agent interfaces, and asserts the patched
-  03/04/05 disclosures and the patched-agent Stage 08 substitution are refused.
-  The challenge and patched Linux guests are **mandatory**: the target brings
-  them up and waits, and if the guest is missing or unreachable the verifier
-  exits nonzero naming the stages it did not execute — it never prints a
-  full-chain success message or silently downgrades to a skip. On Apple Silicon
-  the guest boots as aarch64 under TCG.
-
-Both scopes drive the same interfaces a player uses (no DB edits, injected
-credentials or organizer role grants).
-
-`scripts/verify-lifecycle.py` queues 24 reports across two temporary tenants,
-uses three workers, checks claims/results/notifications/isolation, cleans its
-fixtures and restores the worker count. Its restart variant exercises graceful
-application/database/cache/bus restart while retaining volumes and guest state.
-It does not cover destructive reset; overlapping expired-lease owners are
-covered by `scripts/verify-fencing.py`.
-
-## Remaining work
-
-Done since the previous review:
-- Player progression `tenant_admin` → Linux foothold → Stage 08 (Stages 03–07),
-  live-verified by `scripts/verify-chain.py`.
-- Tenant settings (`GET /api/v2/tenant`) added with Stage 03.
-- Anti-replay timestamp changes rebuilt, verified and documented (above).
-- Stale worker-claim fencing (attempt_count fence) and atomic result/notification
-  writes in `processOneReport`, with `scripts/verify-fencing.py` (`make fencing-verify`).
-- Organizer solve walkthrough at `docs/WALKTHROUGH.md`.
-
-Remaining:
-1. Automate destructive reset/reprovisioning and guest restart/boundary checks in
-   CI; current CI uses the TCG path and has no dedicated KVM/ARM64 matrix.
-2. Implement the final evidence correlation and isolated validator (Phase 6).
-3. Final isolation/material-exposure audit and blind playtests; then tune
-   difficulty and publish the rubric.
+Remaining work includes CI reset coverage, a blind playtest, image digest
+pinning/scanning, and final evidence correlation. No CI success is claimed.
