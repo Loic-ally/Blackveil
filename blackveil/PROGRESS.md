@@ -1,219 +1,215 @@
 # BLACK VEIL build progress
 
+Last source and local-stack review: **2026-10-29**. This inventory includes the
+current working tree, including uncommitted worker/agent replay-protection changes.
+Implementation, previous verification reports and checks rerun during this review
+are distinguished below; running containers do not prove they contain every local change.
+
 ## Current milestone
 
-Phase 1 is complete. Phase 2 has a working application baseline and tenant
-administration. Phase 3 now chains Stage 01 (cross-tenant historical export) into Stage 02
-(workspace administrator recovery) from an ordinary signup; the
-administrator-to-guest progression and later guest stages remain incomplete.
+AETHER has an implemented application baseline. The playable challenge currently
+chains ordinary signup → Stage 01 historical export → Stage 02 administrator
+recovery → `tenant_admin` in the player's own workspace.
+
+**The player path reaches `tenant_admin` and now continues into Stage 03
+investigation, but no implemented stage yet grants `system_admin`** or unlocks
+the Linux terminal from `tenant_admin`. Stage 03 (historical reconstruction) is
+implemented and recovers the platform-operator recovery artifact that Stage 05
+will consume, but grants no privilege. The VM, terminal bridge, archive worker
+integration and Stage 08 agent identity-confusion mechanism already exist; the
+`tenant_admin → system_admin → terminal` bridge (Stages 04–05) is specified in
+`docs/stages/03-08-implementation-plan.md` and not yet implemented. Organizer
+verification still supplies prerequisites for the later components.
 
 ## Milestones
 
-| Phase | State | Evidence / next action |
+| Phase | State | Actual implementation / remaining work |
 |---|---|---|
-| 1. Repository initialization | Complete | Project layout, trust-boundary definition, first stage spec, Makefile, Compose, CI, reset/setup scripts and network policy are present. |
-| 2. Application MVP | In progress | Registration, UUID tenant APIs, team invitations, telemetry, incidents, notifications, audit, and asynchronous reports work. Service database roles, persistent application restart and concurrent worker checks are covered; the administrator path is Stage 02; tenant settings remain. |
-| 3. First playable challenge | In progress | Stage 01 reproduces a bounded cross-tenant historical export in challenge mode and canonical tenant resolution in patched mode. Stage 02 turns the exported handover receipt into tenant_admin in the player's own workspace. Both are tested through HTTPS; the path to a guest foothold remains unimplemented. |
-| 4. Linux integration | In progress | Disposable Debian 13 QEMU guest, restricted `operator` login, Rust agent and `system_admin`-gated browser terminal are implemented; Live archive reports now use the worker and VM agent; the earlier milestone granting access is pending. |
-| 5. Advanced investigation | Not started | Implement worker/agent trust analysis and native service stages. |
-| 6. Final proof | Not started | Add evidence correlation and isolated validator. |
-| 7. Full challenge validation | Not started | Execute organizer walkthrough and reset tests. |
-| 8. Security hardening | Not started | Verify isolation, reset behavior and non-exposure of organizer material. |
-| 9. Difficulty tuning | Not started | Blind playtest, adjust clues and publish rubric. |
+| 1. Repository initialization | Complete | Separate project, Compose, Makefile, setup/reset scripts, architecture and stage specifications, CI workflow. |
+| 2. Application MVP | In progress | Auth, tenant-scoped business workflows, team administration, reports and audit implemented. Tenant settings absent. |
+| 3. First playable challenge | Partial: Stages 01–02 implemented | Signup-to-tenant-admin chain exists in challenge mode, with patched controls. Administrator-to-guest progression absent. |
+| 4. Linux integration | Implemented infrastructure; progression incomplete | Debian QEMU guest, restricted operator, Rust agent, gated browser terminal and live archive reporting implemented. Guest access still needs an earlier challenge stage. |
+| 5. Advanced investigation | Partial | Stage 08 has a specification, native agent mechanism and organizer verifier. Intermediate worker/guest investigation stages and player-accessible prerequisites remain. |
+| 6. Final proof | Not implemented | No final evidence-correlation flow or isolated final validator found. |
+| 7. Full challenge validation | Partial | Component/integration scripts and CI exist; no complete player walkthrough, destructive reset/replay validation or blind playtest. |
+| 8. Security hardening | Partial | Network separation, runtime database roles, restricted guest and SSH host pinning exist. Complete boundary audit and remaining replay/lease/reset cases are unfinished. |
+| 9. Difficulty tuning | Not implemented | No completed blind playtest or published scoring rubric found. |
 
-## Decisions
+## Implemented application
 
-- Keep the existing Watson product intact; BLACK VEIL is a separate project in
-  `blackveil/`.
-- No challenge service will mount the Docker socket or host filesystem.
-- The player entry point is the HTTPS gateway only. Application services will
-  be private to explicitly named Compose networks.
-- The challenge root cause is inconsistent identity interpretation across the
-  UUID tenant model, retained numeric compatibility model, worker principal map
-  and native agent trust envelope. Each stage must be specified before coding.
-- The Linux guest uses Debian's generic-cloud image checked against the pinned
-  SHA-512 manifest in `vm/images/SHA512SUMS`; disks and SSH keys live in named
-  Docker volumes. QEMU user networking reaches only API/worker peers on the
-  internal lab network, with explicit SSH/agent forwards and no public egress.
+- **Authentication:** separate `aether-auth` service; registration creates an
+  ordinary operator workspace; login/logout and database-backed sessions. The API
+  resolves sessions through auth and fails closed on resolution errors. Auth has
+  no lab network membership or VM key mount.
+- **Workspace UI:** landing, registration/login, `/workspace`, `/team`, `/join`
+  and `/lab`. Workspace views cover overview, equipment, maintenance incidents,
+  reports, notifications and activity history.
+- **Equipment and telemetry:** tenant-scoped equipment listing/creation,
+  dashboard and per-asset telemetry history. A dedicated service generates
+  synthetic telemetry every 15 seconds; this is a lab simulator, not a live
+  industrial equipment integration. Equipment editing/deletion is not implemented.
+- **Maintenance and activity:** incident creation/listing/status updates,
+  internal notifications with read marking, and tenant-scoped audit events.
+- **Team administration:** member listing, workspace role changes, invitations,
+  revocation and acceptance. Invitation tokens are hashed, email-bound, expire
+  after 48 hours and are consumed transactionally. Workspace administrators
+  cannot grant system roles. Signup itself does not grant administrator access.
+- **Reports:** asynchronous inventory and maintenance CSVs, Stage 01 historical
+  exports (`legacy-history`), and VM-backed archives (`legacy-archive`) for
+  enrolled tenants. Results/downloads remain scoped to the requesting tenant.
+  Historical exports and VM archive reports are separate paths.
+- **Durability:** PostgreSQL stores report jobs and results; NATS wakes workers
+  and polling also finds work. Claims use `FOR UPDATE SKIP LOCKED`, a one-minute
+  lease and attempt counter. Expired running jobs can be reclaimed. This is not
+  a general exactly-once guarantee: overlapping expired-lease owners are not
+  fenced, and completion/notification writes are separate operations.
+- **Database:** ordered transactional migrations 001–007; separate API, auth,
+  worker, telemetry and legacy runtime roles with scoped grants. A short-lived
+  migrator owns schema changes; runtime services do not receive its credentials.
 
-## Verification record
+Main evidence: `api/internal/platform/{platform,auth_service,team,archive,legacy,
+recovery,terminal,service_roles,migrate}.go`, `api/internal/platform/migrations/`,
+and `web/app/`.
 
-- `docker compose config --quiet` passed.
-- Go API: `go test ./...`, `go vet ./...` and `go mod verify` passed.
-- Next.js 16.4.3 production build passed with `next build --webpack`.
-- `npm audit --omit=dev` reported zero vulnerabilities after updating Next.js.
-- Docker built and started the web, gateway, API, PostgreSQL 18, Redis 8, NATS,
-  worker and telemetry services.
-- `scripts/smoke.py` passed registration, logout, tenant isolation, equipment,
-  telemetry history, incident creation/status transitions, audit, notifications,
-  asynchronous CSV generation and report tenant isolation.
-- `scripts/check-network.sh` passed: only TCP 443 is published; API/web/worker/
-  telemetry/database/cache/bus have no host ports; the gateway is absent from the
-  data network; app and data networks are Docker-internal.
-- The local host entry could not be written because `/etc/hosts` is protected in
-  this environment. `make setup` prints the exact `127.0.0.1 aether.blackveil.test`
-  line; add it manually before using the requested hostname in a browser.
-- The Linux VM stage implementation is in `vm/`: QEMU/TCG lifecycle, cloud-init
-  provisioning, a key-only non-sudo operator, a native Rust agent, and
-  challenge/patched identity-envelope handling. `make vm-verify` exercises both.
-- Linux VM verification passed on the ARM64 development host: both guests booted
-  from clean volumes; SSH confirmed the operator is non-root, non-sudo and cannot
-  read the worker key; the API can read the operator key through a read-only
-  mount; the challenge accepted a changed unsigned legacy number; the patched
-  agent rejected it. API and worker both reached the agent health endpoint over
-  the private lab network.
-- After adding the VM, `scripts/check-network.sh` still passed with only gateway
-  TCP 443 published; `scripts/smoke.py` passed ordinary signup, tenant isolation,
-  telemetry, incidents, audit, notifications and asynchronous reports; it also
-  confirmed an ordinary operator receives HTTP 403 from the Linux terminal.
-- `scripts/vm-verify.py` passed the gated browser terminal flow through HTTPS and
-  WebSocket: the organizer test grants the stage role, a foreign Origin is
-  rejected, the API pins the guest's ED25519 host key, and the session receives
-  a non-root `operator` shell. The temporary test tenant is deleted afterward.
-- `scripts/vm-reset.sh` passed interactively: it deleted both disposable guest
-  state volumes and restarted the API without removing application data. A
-  cleared-state challenge guest then booted from the pinned Debian image and
-  became healthy with a newly generated operator key and guest host key.
+## Challenge stages
 
-## Remaining Phase 2 work
+### Stage 01 — historical identity mismatch
 
-- Add tenant settings. The challenge path to administrator membership is Stage 02.
-- Exercise destructive reset behavior in CI; persistent application restart and concurrent workers are now covered.
-- Make the ordinary UI accessible through the local hostname after the hosts
-  entry is installed.
+Implemented in `legacy.go`, migration 004 and the reports UI, with specification
+`docs/stages/stage-01-identity-parity.md` and `scripts/verify-legacy.py`.
+An ordinary operator supplies their session tenant UUID and a historical numeric
+installation reference. Challenge mode lets the worker/private legacy service
+retrieve a bounded foreign historical archive; patched mode resolves the
+canonical migration mapping. API docs, installation references, migration data,
+CSV output and audit records provide investigation evidence.
 
-## Remaining Linux integration work
+### Stage 02 — administrator recovery
 
-- Add replay protection for worker-to-agent requests.
-- Implement the earlier identity milestones that unlock historical tenants and the terminal.
-- Add guest restart/reset and guest-host boundary checks to CI on Linux/KVM and
-  the ARM64 TCG development path.
+Implemented in `recovery.go`, migration 007 and the `/team` recovery form, with
+specification `docs/stages/stage-02-administrator-recovery.md` and
+`scripts/verify-recovery.py`.
+The Stage 01 archive contains the random initialization-time handover receipt
+for installation 4101; the recovery lookup stores its SHA-256 hash. Challenge
+mode validates the session destination and receipt/installation pair but omits
+binding the receipt's source tenant to that destination. Patched mode enforces
+that binding. Promotion and redemption share a transaction and workspace lock;
+only `tenant_admin` is granted, with per-account redemption tracking and audit.
+The terminal remains denied after recovery.
 
-## Archive reporting integration
+### Stage 03 — historical state reconstruction
 
-- Added ordered, transactional migrations and a separate worker service-identity map.
-- Enrolled tenants can queue historical archive CSVs through the app; the worker
-  signs database-derived identities, calls the private VM agent, checks the
-  returned identity and records provenance in tenant-scoped audit events.
-- Live HTTPS/worker/VM verification passed, including enrollment denial, foreign
-  report denial, audit provenance, CSV content and completion notification.
-- Go protocol tests passed for both signature modes, response tenant mismatch
-  rejection and redirect rejection. The production frontend build passed.
+Implemented in `tenant.go`, migration 008 and two authenticated routes
+(`GET /api/v2/tenant`, `GET /api/v2/tenant/migration`), with specification
+`docs/stages/stage-03-historical-reconstruction.md`. A `tenant_admin` reads the
+migration history endpoint, which in challenge mode resolves records by a
+caller-supplied installation number without binding it to the session tenant
+(the Stage 01 flaw at the settings layer), reconstructing the UUID↔number map,
+the `svc:aether-reporting` principal, and the installation-4100 platform-operator
+recovery receipt (its SHA-256 matches the stored hash, so it is a usable Stage 05
+artifact). Patched mode resolves the caller's own canonical number only. This
+stage grants no role or enrollment. **Verified:** `go build`/`go vet`/`go test`
+(including `migrationLookupNumber`) and application of migrations 001–008 on
+Postgres 16 with grant, cross-tenant-read and receipt-integrity checks. Live
+HTTP verification (`scripts/verify-reconstruction.py`) is not yet written/run.
 
-## Authentication service split
+### Stage 08 — native agent identity binding
 
-- `aether-auth` owns public credential routes and private session resolution.
-  The API resolves every session through that service and fails closed on errors.
-- Auth has no lab network membership or VM key mount, and no host-published port.
-- Unit checks cover revoked/malformed identities, unknown roles and service
-  failure. Live signup/login/logout and archive-delivery regressions are exercised.
+The mechanism is implemented in `vm/agent/src/main.rs`, with specification
+`docs/stages/stage-08-agent-identity-binding.md` and organizer verification in
+`vm/verify-agent.py` / `scripts/vm-verify.py`.
+Challenge mode signs job/principal/UUID but trusts an unsigned numeric archive
+selector. Patched mode signs and validates the numeric identity against the
+UUID mapping. This yields bounded archive access, not guest root or host access.
+The worker derives its service identity from the database and checks the agent's
+response identity before delivering CSV and recording provenance.
 
-## VM startup and host identity correction
+**Current local anti-replay implementation:** the worker adds `issued_at`;
+patched-mode HMAC includes it. The patched Rust agent accepts timestamps within
+120 seconds and rejects repeated signatures, normalizing hexadecimal case.
+The cache is process-local and disappears on restart. Challenge mode retains
+its unsigned-field behavior and does not enforce replay protection. Go protocol
+tests and the Python verifier have been updated; the updated VM behavior was
+not rebuilt or rerun during this review. Persistent replay protection remains
+unfinished. The Stage 08 specification and agent README do not yet describe
+this timestamp extension.
 
-- VM readiness now waits for the agent, authenticated cloud-init completion and
-  collection of the final ED25519 host key. Bootstrap retries use backoff.
-- The SSH bridge explicitly negotiates the pinned host-key type; otherwise Go
-  could select another valid guest host key and fail its ED25519 pin check.
-- A fresh patched guest reached readiness and passed the agent protocol checks.
-  The browser terminal regression passed through the separate auth service after
-  the negotiation correction (`scripts/vm-verify.py --terminal-only`).
-- The VM verifier now stops its patched fixture even if deployment fails.
+No Stage 03–07 specifications or implemented progression connecting Stage 02 to
+Stage 08 were found. The organizer verifier signs fixtures with organizer-held
+credentials; it does not establish that a player can obtain the required valid
+envelope through the intended investigation path.
 
-## Team administration
+## Infrastructure and isolation
 
-- `/team` supports tenant-scoped member lists, role changes, invitation creation
-  and revocation. `/join` accepts invitations through the auth service. Tokens
-  are stored only as hashes, bound to email, expire after 48 hours and are
-  consumed transactionally. Workspace administrators cannot grant system roles.
-- Live regression passed for operator/foreign-tenant denial, email binding,
-  single use, revoked/expired invitations, role promotion/demotion and immediate
-  session enforcement. Production frontend and Go checks passed.
-- Organizer tests grant a temporary administrator prerequisite and clean up their
-  tenants. Signup still grants ordinary operator access; no admin bypass was added.
+- HTTPS Nginx gateway is the only host-published service (TCP 443). Web, API,
+  auth, worker, telemetry, legacy, PostgreSQL, Redis and NATS run separately.
+  App, data and lab networks are Docker-internal; gateway is outside data/lab.
+- Debian 13 generic-cloud guest under QEMU/TCG, pinned SHA-512 image manifest,
+  cloud-init provisioning, named-volume disks/keys, no privileged container or
+  Docker socket mount. Guest forwarding exposes SSH/agent only inside the lab.
+- VM startup waits for agent readiness, authenticated cloud-init completion and
+  the final ED25519 guest host key. The API pins that key for SSH.
+- `/api/lab/terminal` requires `system_admin` and the configured Origin. It
+  bridges WebSocket to a non-root, non-sudo `operator` SSH shell. The operator
+  cannot read the worker signing key. `make vm-shell` is organizer access.
+- VM services are optional Compose profiles: ordinary `make up` does not start
+  them. `make vm-up` starts the challenge guest; verification uses a separate
+  patched guest and volume.
+- `make reset` removes application and VM volumes after explicit confirmation.
+  `make vm-reset` removes both guest states/keys and recreates the API while
+  retaining application data. Scripts exist; full reset correctness is not
+  established by CI teardown alone.
+- No `aether.blackveil.test` entry was found in `/etc/hosts` during this review.
+  Setup prints the mapping to add; browser hostname readiness remains local
+  setup work.
 
-## Legacy identity stage
+## Verification status
 
-- Added a private legacy-history service and historical export workflow over the
-  existing NATS worker. The public installation reference, UUID API docs,
-  migration records, worker map and CSV output provide independent evidence
-  about the old and new identity models.
-- The worker and legacy service use a dedicated credential, separate from the
-  Linux agent key. The service is attached only to the private data network and
-  publishes no host port.
-- `scripts/verify-legacy.py` passed in challenge and patched modes: the ordinary
-  operator retrieves the seeded cross-tenant archive only in challenge mode;
-  patched mode resolves the canonical migration mapping, while enrolled archive
-  exports continue to work. UUID boundary and audit evidence checks passed.
-- The normal application smoke test, production web build, Go tests and network
-  isolation script passed after integration.
-- Remaining: this stage demonstrates bounded data access but does not grant the
-  intended Linux foothold. The admin membership and terminal progression need a
-  fully specified and verified stage.
+### Rerun during the 2026-10-29 review
 
-## Durable report recovery
+- `go test ./...`: passed on the current Go working tree.
+- `go vet ./...`: passed.
+- `docker compose config --quiet`: passed.
+- `scripts/check-network.sh`: passed; only gateway is host-published and VM
+  ports remain private.
+- `docker compose ps`: application services and both VM fixtures were running;
+  services with health checks reported healthy. Images were not rebuilt, so
+  this does not verify deployment of the local anti-replay changes.
 
-- Report claims now carry a one-minute lease and an attempt counter. A worker
-  that exits after claiming work leaves a report that can be reclaimed after
-  the lease expires; old unleased `running` rows are returned to the queue by
-  migration 005.
-- `scripts/verify-worker.py` passed a live interruption check: it stopped the
-  worker after queueing a report, marked the claim expired, restarted the worker
-  and confirmed the report completed on its second attempt. Archive delivery,
-  tenant isolation, audit provenance and notifications passed in the same run.
-- Replay protection for guest agent envelopes remains separate work.
+### Previously recorded results — not rerun during this review
 
-## Database service roles
+The previous progress log reported successful production web build, dependency
+checks, application smoke tests, team administration, Stages 01–02 in both
+identity modes, database grants, live archive delivery, worker interruption
+recovery, persistent application restart with three competing workers, VM
+protocol/terminal checks and an interactive VM reset. These are retained as
+historical reports, not fresh verification of the entire current working tree.
 
-- Schema migrations run in a short-lived `aether-migrate` container using the
-  database owner account. The API, auth, worker, telemetry and legacy services
-  each connect with a different non-superuser role; runtime services no longer
-  receive the migration account password.
-- Grants are scoped by service and column where practical. The API can change
-  workspace roles but cannot insert users or alter tenant IDs; auth cannot update
-  user roles; the worker cannot read users; telemetry can only read assets and
-  insert telemetry; legacy can only read archived history.
-- Live checks passed for signup, the complete application smoke flow, team
-  invitations, Stage 01 in both identity modes, archive delivery and recovery of
-  interrupted jobs. `scripts/verify-db-roles.py` confirmed non-superuser roles
-  and the expected grant boundaries.
+### Automated coverage present in the repository
 
-## Persistent restart and concurrent workers
+`.github/workflows/blackveil.yml` configures Go tests, web build, service startup,
+smoke/team/legacy/recovery/database-role/network checks, lifecycle verification
+with `--restart-app`, worker archive checks and VM/terminal verification, followed
+by volume teardown. Workflow presence is not evidence of a successful CI run.
 
-- Added `scripts/verify-lifecycle.py` and `make lifecycle-verify`. The organizer
-  check queues 24 inventory reports across two temporary tenants while workers
-  are stopped, then starts three replicas and verifies single claims, cleared
-  leases, one notification per job, CSV tenant isolation and foreign-download
-  denial. It removes its tenants and restores the original worker count.
-- `--restart-app` also stops and starts the application, PostgreSQL, Redis and
-  NATS before processing, verifying persisted sessions and queued work without
-  removing named volumes or restarting the Linux guests. CI runs this variant
-  before its VM checks.
-- Live restart/concurrency verification passed on the development Docker stack.
-- This covers graceful stop/start and competing claims. Destructive reset,
-  overlapping expired-lease owners and guest request replay protection remain
-  separate work.
+`scripts/verify-lifecycle.py` queues 24 reports across two temporary tenants,
+uses three workers, checks claims/results/notifications/isolation, cleans its
+fixtures and restores the worker count. Its restart variant exercises graceful
+application/database/cache/bus restart while retaining volumes and guest state.
+It does not cover destructive reset or overlapping expired-lease owners.
 
-## Administrator recovery stage
+## Remaining work
 
-- Stage 02 (`docs/stages/stage-02-administrator-recovery.md`): migration 007
-  seeds a random per-initialization handover receipt for installation 4101,
-  stored only as a SHA-256 hash and readable only by the API role. The
-  plaintext appears in the Stage 01 historical export.
-- `POST /api/v2/team/recover` and the `/team` recovery form check the session
-  UUID and the receipt/installation pair. Challenge mode omits the binding
-  between the receipt's source tenant and the active workspace; patched mode
-  requires all three to agree. Redemption and promotion share one transaction
-  under the workspace role lock; only `tenant_admin` can be granted.
-- Fixed an audit insert that reused one parameter as both UUID and text
-  (SQLSTATE 42P08), which made every recovery return HTTP 500.
-- `scripts/verify-recovery.py` (`make recovery-verify`) passed: fresh signup →
-  historical CSV → receipt → tenant_admin with no organizer grants; wrong
-  destination, wrong installation, invalid receipt and caller-supplied role are
-  rejected; concurrent redemption yields exactly one 204; audit records source
-  and destination UUIDs without the receipt; a demoted account cannot replay;
-  the terminal stays denied. Patched mode rejects the known foreign receipt and
-  accepts canonical recovery for a migrated-tenant fixture.
-- Smoke, team, Stage 01, database-role, lifecycle and network checks, Go
-  tests/vet and the production web build passed after integration.
-- Remaining: tenant_admin does not yet lead to the Linux foothold; the
-  administrator-to-`system_admin`/terminal milestone needs its own stage spec.
+1. Specify and implement the player progression from `tenant_admin` to the
+   authorized Linux foothold, including the intermediate investigation clues
+   and Stage 08 prerequisites.
+2. Add tenant settings to complete the planned application scope.
+3. Rebuild and verify the local timestamp/anti-replay changes against both VM
+   modes; synchronize protocol documentation and address replay across agent
+   restarts if required by the final challenge model.
+4. Fence stale worker claims and define/test report completion and notification
+   behavior under overlapping leases and failures between writes.
+5. Automate destructive reset/reprovisioning and guest restart/boundary checks;
+   current CI uses the TCG path and has no dedicated KVM/ARM64 matrix.
+6. Implement the final evidence correlation and isolated validator.
+7. Run the complete organizer walkthrough, final isolation/material-exposure
+   audit and blind playtests; then tune difficulty and publish the rubric.

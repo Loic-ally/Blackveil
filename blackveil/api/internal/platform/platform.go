@@ -102,6 +102,8 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("DELETE /api/team/invitations/{id}", s.auth(s.sameOrigin(http.HandlerFunc(s.revokeInvite))))
 	mux.Handle("PATCH /api/team/users/{id}", s.auth(s.sameOrigin(http.HandlerFunc(s.changeRole))))
 	mux.Handle("GET /api/me", s.auth(http.HandlerFunc(s.me)))
+	mux.Handle("GET /api/v2/tenant", s.auth(http.HandlerFunc(s.tenantSettings)))
+	mux.Handle("GET /api/v2/tenant/migration", s.auth(http.HandlerFunc(s.tenantMigration)))
 	mux.Handle("GET /api/lab/terminal", s.auth(http.HandlerFunc(s.terminal)))
 	mux.Handle("GET /api/dashboard", s.auth(http.HandlerFunc(s.dashboard)))
 	mux.Handle("GET /api/assets", s.auth(http.HandlerFunc(s.assets)))
