@@ -105,6 +105,7 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("GET /api/v2/tenant", s.auth(http.HandlerFunc(s.tenantSettings)))
 	mux.Handle("GET /api/v2/tenant/migration", s.auth(http.HandlerFunc(s.tenantMigration)))
 	mux.Handle("POST /api/v2/tenant/reporting-identity", s.auth(s.sameOrigin(http.HandlerFunc(s.enrollReportingIdentity))))
+	mux.Handle("POST /api/v2/lab/operator-recovery", s.auth(s.sameOrigin(http.HandlerFunc(s.recoverOperator))))
 	mux.Handle("GET /api/lab/terminal", s.auth(http.HandlerFunc(s.terminal)))
 	mux.Handle("GET /api/dashboard", s.auth(http.HandlerFunc(s.dashboard)))
 	mux.Handle("GET /api/assets", s.auth(http.HandlerFunc(s.assets)))

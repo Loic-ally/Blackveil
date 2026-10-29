@@ -191,7 +191,12 @@ organizer walkthrough entry → unintended-bypass check → next stage reachable
    **implemented**; verified by `go build/vet/test`, migrations 001–009 on
    Postgres, and `verify-chain.py` live (challenge + patched PASS) against the
    full running stack.
-5. Stage 05 — application-side, Go-testable.
+5. Stage 05 (operator recovery = the `system_admin` bridge, migration 010, spec,
+   Go test) — **implemented**; verified by `go build/vet/test`, migrations
+   001–010 on Postgres, and `verify-chain.py` live (challenge + patched PASS):
+   a player reaches `system_admin` from ordinary signup with no organizer action,
+   and the terminal authz gate opens. The application-side chain (01→05) is
+   complete and live-verified.
 6. Stage 06/07 VM wiring + Stage 08 doc sync + agent rebuild.
 7. `verify-chain.py` + patched regression.
 8. Update PROGRESS.md with actual command output.

@@ -64,6 +64,11 @@ def enroll(client, tenant, installation, receipt):
         "tenant_uuid": tenant, "installation_no": installation, "receipt": receipt})
 
 
+def operator_recovery(client, tenant, installation, receipt):
+    return client.request("/api/v2/lab/operator-recovery", "POST", {
+        "tenant_uuid": tenant, "installation_no": installation, "receipt": receipt})
+
+
 def reach_tenant_admin(player, tenant):
     """Stage 01 → Stage 02: ordinary signup to tenant_admin via discoverable evidence."""
     _, csv = legacy.report(player, tenant, 4101)
@@ -179,6 +184,52 @@ def run():
         print("PASS: challenge stage 04 — reporting-identity enrollment via a foreign installation "
               "receipt; svc:aether-reporting enrolled, legacy-archive opened, no role gained.", flush=True)
 
+        # ---- Stage 05: operator recovery (tenant_admin → system_admin) ----
+        # Ordinary operators cannot call operator recovery at all.
+        stray, stray_profile = signup(profiles, "Stray")
+        require(operator_recovery(stray, stray_profile["tenant_id"], PLATFORM_INSTALLATION, po_receipt)[0] == 403,
+                "operator recovery open to ordinary operators")
+
+        # Stage 04 is a real prerequisite: a tenant_admin that reconstructed the
+        # receipt (Stage 03) but did not enroll (Stage 04) is refused.
+        player_b, profile_b = signup(profiles, "NoEnroll")
+        reach_tenant_admin(player_b, profile_b["tenant_id"])
+        require(operator_recovery(player_b, profile_b["tenant_id"], PLATFORM_INSTALLATION, po_receipt)[0] == 403,
+                "operator recovery succeeded without the reporting identity (stage 04)")
+
+        # Input boundaries with the enrolled player.
+        require(operator_recovery(player, tenant, PLATFORM_INSTALLATION, "0" * 64)[0] == 403,
+                "operator recovery accepted an invalid receipt")
+        require(operator_recovery(player, tenant, 9999, po_receipt)[0] == 403,
+                "operator recovery accepted a wrong installation")
+
+        # Terminal is denied immediately before elevation.
+        require(player.request("/api/lab/terminal")[0] == 403, "tenant_admin unexpectedly held terminal access")
+
+        # Challenge elevation via the foreign platform-operator receipt.
+        status, _ = operator_recovery(player, tenant, PLATFORM_INSTALLATION, po_receipt)
+        require(status == 204, f"stage 05 operator recovery failed: {status}")
+        _, me = player.request("/api/me")
+        require(me["role"] == "system_admin", "stage 05 did not elevate to system_admin")
+
+        # The terminal authorization gate now distinguishes challenge completion:
+        # it no longer returns 403 (503/400/101 depend on VM/websocket, all != 403).
+        require(player.request("/api/lab/terminal")[0] != 403,
+                "system_admin still denied by the terminal authorization gate")
+
+        # Single-use per account.
+        require(operator_recovery(player, tenant, PLATFORM_INSTALLATION, po_receipt)[0] == 409,
+                "operator recovery redeemed twice by one account")
+
+        _, events = player.request("/api/audit")
+        recovered = [e for e in events if e["action"] == "operator.recovered"]
+        require(len(recovered) == 1 and recovered[0]["detail"]["source_tenant_uuid"] == NORTH
+                and recovered[0]["detail"]["tenant_uuid"] == tenant
+                and recovered[0]["detail"]["role"] == "system_admin", "operator recovery provenance missing")
+        require(po_receipt not in str(events), "audit copied the operator recovery secret")
+        print("PASS: challenge stage 05 — operator recovery requires Stage 03 receipt + Stage 04 "
+              "enrollment, elevates once to system_admin, and opens the terminal authz gate.", flush=True)
+
         # ---- Patched mode: the Stage 03 disclosure is closed ----
         legacy.switch("patched")
         status, body = player.request(f"/api/v2/tenant/migration?legacy_tenant_no={PLATFORM_INSTALLATION}")
@@ -199,6 +250,14 @@ def run():
                 "patched mode enrolled the caller from a foreign installation receipt")
         print("PASS: patched stage 04 binds the enrollment receipt's installation "
               "to the caller and refuses a foreign receipt.", flush=True)
+
+        # Patched Stage 05: a foreign platform-operator receipt cannot elevate the
+        # caller (binding check precedes redemption, so 403 even for the already-
+        # elevated player — the gate fired, not a role/redemption conflict).
+        require(operator_recovery(player, tenant, PLATFORM_INSTALLATION, po_receipt)[0] == 403,
+                "patched mode elevated from a foreign platform-operator receipt")
+        print("PASS: patched stage 05 binds the platform-operator receipt to the "
+              "destination workspace and refuses a foreign receipt.", flush=True)
     finally:
         try:
             for profile in profiles:

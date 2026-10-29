@@ -11,15 +11,17 @@ AETHER has an implemented application baseline. The playable challenge currently
 chains ordinary signup → Stage 01 historical export → Stage 02 administrator
 recovery → `tenant_admin` in the player's own workspace.
 
-**The player path reaches `tenant_admin` and now continues into Stage 03
-investigation, but no implemented stage yet grants `system_admin`** or unlocks
-the Linux terminal from `tenant_admin`. Stage 03 (historical reconstruction) is
-implemented and recovers the platform-operator recovery artifact that Stage 05
-will consume, but grants no privilege. The VM, terminal bridge, archive worker
-integration and Stage 08 agent identity-confusion mechanism already exist; the
-`tenant_admin → system_admin → terminal` bridge (Stages 04–05) is specified in
-`docs/stages/03-08-implementation-plan.md` and not yet implemented. Organizer
-verification still supplies prerequisites for the later components.
+**The application-side chain is complete: ordinary signup → Stage 01 → 02 → 03 →
+04 → 05 reaches `system_admin` with no organizer action, and the Linux terminal
+authorization gate opens.** Stages 03 (historical reconstruction), 04
+(reporting-identity enrollment) and 05 (operator recovery, the former missing
+`tenant_admin → system_admin` bridge) are implemented and live-verified by
+`scripts/verify-chain.py` in challenge and patched modes against the full stack.
+Remaining: the VM-side stages — Stage 06 (reach the operator shell through the
+existing terminal), Stage 07 (in-guest agent discovery / capture a worker-signed
+envelope) and Stage 08 integration (already-implemented agent mechanism, doc
+sync, rebuild), plus the patched-mode VM regression. The VM fixtures, terminal
+bridge and Stage 08 agent mechanism already exist.
 
 ## Milestones
 
@@ -127,6 +129,24 @@ guest slot), so `legacy-archive` becomes queueable but resolves an empty archive
 `go build`/`go vet`/`go test` (incl. `enrollmentBindingOK`), migrations 001–009 on
 Postgres, and `scripts/verify-chain.py` live against the full stack (challenge and
 patched PASS).
+
+### Stage 05 — operator recovery (tenant_admin → system_admin bridge)
+
+Implemented in `operator.go`, migration 010 and `POST /api/v2/lab/operator-recovery`,
+with specification `docs/stages/stage-05-operator-recovery.md`. A `tenant_admin`
+presents the platform-operator receipt reconstructed in Stage 03 (installation
+4100) and must already hold the Stage 04 reporting identity; challenge mode omits
+binding the receipt's canonical tenant to the destination workspace (the Stage 02
+flaw lifted one authority level) and elevates to `system_admin`; patched mode
+requires installation, principal and destination UUID to agree and refuses.
+Single-use per account, `tenant_admin`-only promotion, full provenance audit, no
+credential issued. This is the previously missing bridge: a player now reaches
+`system_admin` from ordinary signup with no organizer action, and the terminal
+authorization gate (`terminal.go`, unchanged, still `system_admin`-only) opens.
+**Verified:** `go build`/`go vet`/`go test` (incl. `sourceBindingOK`), migrations
+001–010 on Postgres, and `scripts/verify-chain.py` live against the full stack —
+signup → 01 → 02 → 03 → 04 → 05 → system_admin, challenge and patched PASS,
+including the Stage 04 prerequisite and single-use/operator-denied/audit checks.
 
 ### Stage 08 — native agent identity binding
 

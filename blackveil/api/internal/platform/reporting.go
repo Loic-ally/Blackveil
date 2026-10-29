@@ -9,13 +9,13 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-// enrollmentBindingOK decides whether a reporting-enrollment receipt may enroll
-// the caller's workspace. Challenge mode accepts any valid receipt regardless
-// of which installation issued it (the Stage 02 unbound-source flaw at the
-// enrollment hop); patched mode requires the receipt's canonical tenant to be
-// the caller. configured is false for an unknown identity mode so the handler
-// fails closed.
-func enrollmentBindingOK(mode, receiptTenant, callerTenant string) (ok, configured bool) {
+// sourceBindingOK decides whether a receipt issued by one tenant/installation
+// may act on the caller's own tenant. It captures the shared challenge-mode flaw
+// of Stages 04 and 05: challenge mode accepts any valid receipt regardless of
+// which installation issued it (the Stage 02 unbound-source flaw at a later
+// hop); patched mode requires the receipt's canonical tenant to be the caller.
+// configured is false for an unknown identity mode so callers fail closed.
+func sourceBindingOK(mode, receiptTenant, callerTenant string) (ok, configured bool) {
 	switch mode {
 	case "challenge":
 		return true, true
@@ -79,7 +79,7 @@ func (s *Server) enrollReportingIdentity(w http.ResponseWriter, r *http.Request)
 		writeError(w, err)
 		return
 	}
-	ok, configured := enrollmentBindingOK(mode, source, p.TenantID)
+	ok, configured := sourceBindingOK(mode, source, p.TenantID)
 	if !configured {
 		writeJSON(w, 503, map[string]string{"error": "reporting enrollment unavailable"})
 		return
