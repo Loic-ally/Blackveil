@@ -1,4 +1,4 @@
-name: blackveil
+name: ${BLACKVEIL_PROJECT:-blackveil}
 
 services:
   aether-gateway:
@@ -9,7 +9,7 @@ services:
       aether-api:
         condition: service_healthy
     ports:
-      - "443:443"
+      - "${BLACKVEIL_HTTPS_PORT:-443}:443"
     volumes:
       - ./gateway/nginx.conf:/etc/nginx/conf.d/default.conf:ro
       - ./gateway/certs:/etc/nginx/certs:ro
@@ -302,18 +302,18 @@ services:
 
 networks:
   edge:
-    name: blackveil_edge
+    name: ${BLACKVEIL_PROJECT:-blackveil}_edge
     driver: bridge
   app:
-    name: blackveil_app_internal
+    name: ${BLACKVEIL_PROJECT:-blackveil}_app_internal
     driver: bridge
     internal: true
   data:
-    name: blackveil_data_internal
+    name: ${BLACKVEIL_PROJECT:-blackveil}_data_internal
     driver: bridge
     internal: true
   lab:
-    name: blackveil_lab_internal
+    name: ${BLACKVEIL_PROJECT:-blackveil}_lab_internal
     driver: bridge
     internal: true
 
@@ -321,6 +321,6 @@ volumes:
   postgres-data:
   nats-data:
   linux-vm-state:
-    name: blackveil_linux_vm_state
+    name: ${BLACKVEIL_PROJECT:-blackveil}_linux_vm_state
   linux-vm-patched-state:
-    name: blackveil_linux_vm_patched_state
+    name: ${BLACKVEIL_PROJECT:-blackveil}_linux_vm_patched_state

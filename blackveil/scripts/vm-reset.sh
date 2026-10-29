@@ -8,7 +8,8 @@ read answer
 
 docker compose --env-file .env -f compose.yaml --profile vm --profile vm-verify rm --stop --force aether-linux-vm aether-linux-vm-patched >/dev/null 2>&1 || true
 docker compose --env-file .env -f compose.yaml rm --stop --force aether-api >/dev/null 2>&1 || true
-for volume in blackveil_linux_vm_state blackveil_linux_vm_patched_state; do
+project=$(sed -n 's/^BLACKVEIL_PROJECT=//p' .env); project=${project:-blackveil}
+for volume in "${project}_linux_vm_state" "${project}_linux_vm_patched_state"; do
   if docker volume inspect "$volume" >/dev/null 2>&1; then
     docker volume rm "$volume" >/dev/null
   fi

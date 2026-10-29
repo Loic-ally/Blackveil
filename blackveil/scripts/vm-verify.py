@@ -7,12 +7,15 @@ import os
 import socket
 import ssl
 import subprocess
+import urllib.parse
 import urllib.request
 import uuid
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 COMPOSE = ["docker", "compose", "--env-file", ".env", "-f", "compose.yaml"]
+BASE = os.environ.get("AETHER_SMOKE_URL", "https://127.0.0.1")
+PORT = urllib.parse.urlsplit(BASE).port or 443
 
 
 def run(args: list[str]) -> None:
@@ -53,7 +56,7 @@ def read_frame(connection: ssl.SSLSocket, buffered: bytearray) -> tuple[int, byt
 
 
 def connect_websocket(cookie: str, origin: str) -> tuple[ssl.SSLSocket, int, bytearray]:
-    raw = socket.create_connection(("127.0.0.1", 443), timeout=10)
+    raw = socket.create_connection(("127.0.0.1", PORT), timeout=10)
     tls = ssl._create_unverified_context().wrap_socket(raw, server_hostname="aether.blackveil.test")
     tls.settimeout(10)
     nonce = base64.b64encode(os.urandom(16)).decode("ascii")
@@ -108,7 +111,7 @@ def verify_browser_terminal() -> None:
         "password": "blackveil-vm-verify-password",
     }).encode()
     request = urllib.request.Request(
-        "https://127.0.0.1/api/auth/register",
+        BASE + "/api/auth/register",
         data=body,
         headers={
             "Host": "aether.blackveil.test",
