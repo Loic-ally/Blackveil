@@ -81,7 +81,8 @@ services:
       DATABASE_URL: postgres://${AETHER_POSTGRES_USER:-aether}:${AETHER_DB_PASSWORD}@aether-db:5432/${AETHER_POSTGRES_DB:-aether}?sslmode=disable
       NATS_URL: nats://aether-bus:4222
       REDIS_URL: redis://aether-cache:6379/0
-      AETHER_AGENT_URL: http://aether-linux-vm:18080
+      AETHER_AGENT_MODE: ${AETHER_AGENT_MODE:-challenge}
+      AETHER_AGENT_URL: ${AETHER_AGENT_URL:-http://aether-linux-vm:18080}
       AETHER_AGENT_KEY: ${AETHER_AGENT_KEY}
     depends_on:
       aether-api:

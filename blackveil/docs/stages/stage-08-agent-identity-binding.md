@@ -36,6 +36,10 @@ the accepted number from the UUID mapping.
 The reporting worker migrated to UUID tenant identities, while a Rust archive
 agent retained a numeric lookup interface. The worker's signing projection was
 copied from its newer envelope schema, which did not carry the legacy field.
+The ordinary `legacy-archive` report resolves the tenant's enabled reporting
+service identity from PostgreSQL, submits a signed envelope over the private lab
+network, and returns CSV. Only tenants enrolled in archive migration can queue
+this report. The API never accepts a client-supplied numeric tenant or principal.
 
 **Required observations**
 
@@ -78,6 +82,9 @@ Challenge mode must return the other bounded archive; patched mode must reject
 the altered request and accept the canonical request. Verification also
 confirms ordinary registered operators cannot open the browser terminal and
 the guest SSH port is not published on the host.
+The live worker verification also queues archive reports through authenticated
+HTTPS, checks archive CSV and audit/notification completion, and confirms an
+unenrolled tenant cannot queue the report or download another tenant's result.
 
 **Remediation**
 

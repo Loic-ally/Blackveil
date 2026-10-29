@@ -55,12 +55,7 @@ func New(ctx context.Context) (*Server, error) {
 		pool.Close()
 		return nil, err
 	}
-	schema, err := migrationFiles.ReadFile("migrations/001_platform.sql")
-	if err != nil {
-		pool.Close()
-		return nil, err
-	}
-	if _, err = pool.Exec(ctx, string(schema)); err != nil {
+	if err = applyMigrations(ctx, pool); err != nil {
 		pool.Close()
 		return nil, fmt.Errorf("apply schema: %w", err)
 	}
@@ -295,7 +290,12 @@ func (s *Server) checkOrigin(w http.ResponseWriter, r *http.Request) bool {
 
 func (s *Server) me(w http.ResponseWriter, r *http.Request) {
 	p := current(r)
-	writeJSON(w, 200, map[string]string{"id": p.UserID, "tenant_id": p.TenantID, "email": p.Email, "display_name": p.DisplayName, "role": p.Role})
+	var archiveEnabled bool
+	if err := s.db.QueryRow(r.Context(), `SELECT EXISTS(SELECT 1 FROM worker_service_identities WHERE tenant_id=$1 AND enabled)`, p.TenantID).Scan(&archiveEnabled); err != nil {
+		writeError(w, err)
+		return
+	}
+	writeJSON(w, 200, map[string]any{"id": p.UserID, "tenant_id": p.TenantID, "email": p.Email, "display_name": p.DisplayName, "role": p.Role, "archive_enabled": archiveEnabled})
 }
 
 func (s *Server) dashboard(w http.ResponseWriter, r *http.Request) {
@@ -572,9 +572,20 @@ func (s *Server) createReport(w http.ResponseWriter, r *http.Request) {
 	if in.Type == "" {
 		in.Type = "asset-inventory"
 	}
-	if !oneOf(in.Type, "asset-inventory", "maintenance-summary") {
+	if !oneOf(in.Type, "asset-inventory", "maintenance-summary", "legacy-archive") {
 		writeJSON(w, 400, map[string]string{"error": "unsupported report type"})
 		return
+	}
+	if in.Type == "legacy-archive" {
+		var enrolled bool
+		if err := s.db.QueryRow(r.Context(), `SELECT EXISTS(SELECT 1 FROM worker_service_identities WHERE tenant_id=$1 AND enabled)`, p.TenantID).Scan(&enrolled); err != nil {
+			writeError(w, err)
+			return
+		}
+		if !enrolled {
+			writeJSON(w, 403, map[string]string{"error": "workspace is not enrolled in archive migration"})
+			return
+		}
 	}
 	id := newUUID()
 	_, err := s.db.Exec(r.Context(), `INSERT INTO reports(id,tenant_id,requested_by,report_type) VALUES($1,$2,$3,$4)`, id, p.TenantID, p.UserID, in.Type)
@@ -634,7 +645,7 @@ func (s *Server) getReport(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) audit(w http.ResponseWriter, r *http.Request) {
 	p := current(r)
-	rows, err := s.db.Query(r.Context(), `SELECT e.action,e.object_type,e.object_id,e.created_at,COALESCE(u.display_name,'system') FROM audit_events e LEFT JOIN users u ON u.id=e.user_id WHERE e.tenant_id=$1 ORDER BY e.created_at DESC LIMIT 100`, p.TenantID)
+	rows, err := s.db.Query(r.Context(), `SELECT e.action,e.object_type,e.object_id,e.created_at,COALESCE(u.display_name,'system'),e.detail FROM audit_events e LEFT JOIN users u ON u.id=e.user_id WHERE e.tenant_id=$1 ORDER BY e.created_at DESC LIMIT 100`, p.TenantID)
 	if err != nil {
 		writeError(w, err)
 		return
@@ -644,11 +655,12 @@ func (s *Server) audit(w http.ResponseWriter, r *http.Request) {
 	for rows.Next() {
 		var action, kind, id, actor string
 		var at time.Time
-		if err = rows.Scan(&action, &kind, &id, &at, &actor); err != nil {
+		var detail json.RawMessage
+		if err = rows.Scan(&action, &kind, &id, &at, &actor, &detail); err != nil {
 			writeError(w, err)
 			return
 		}
-		out = append(out, map[string]any{"action": action, "object_type": kind, "object_id": id, "at": at, "actor": actor})
+		out = append(out, map[string]any{"action": action, "object_type": kind, "object_id": id, "at": at, "actor": actor, "detail": detail})
 	}
 	writeJSON(w, 200, out)
 }
@@ -754,6 +766,8 @@ func (s *Server) processOneReport(ctx context.Context) error {
 	var content string
 	if kind == "asset-inventory" {
 		content, err = s.assetReport(ctx, tenantID)
+	} else if kind == "legacy-archive" {
+		content, err = s.archiveReport(ctx, id, tenantID)
 	} else {
 		content, err = s.maintenanceReport(ctx, tenantID)
 	}

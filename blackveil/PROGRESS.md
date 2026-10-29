@@ -13,7 +13,7 @@ service contracts are implemented.
 | 1. Repository initialization | Complete | Project layout, trust-boundary definition, first stage spec, Makefile, Compose, CI, reset/setup scripts and network policy are present. |
 | 2. Application MVP | In progress | Web/API/PostgreSQL/Redis/NATS/worker/telemetry run. Ordinary workflows pass the black-box smoke test. Auth is still in the API process; add the separate auth service, service identities, admin flows and remaining integration coverage. |
 | 3. First playable challenge | Not started | Add the first documented challenge flaw only after baseline behavior is working. |
-| 4. Linux integration | In progress | Disposable Debian 13 QEMU guest, restricted `operator` login, Rust agent and `system_admin`-gated browser terminal are implemented; add live worker-to-agent jobs and the earlier milestone that grants this role. |
+| 4. Linux integration | In progress | Disposable Debian 13 QEMU guest, restricted `operator` login, Rust agent and `system_admin`-gated browser terminal are implemented; Live archive reports now use the worker and VM agent; the earlier milestone granting access is pending. |
 | 5. Advanced investigation | Not started | Implement worker/agent trust analysis and native service stages. |
 | 6. Final proof | Not started | Add evidence correlation and isolated validator. |
 | 7. Full challenge validation | Not started | Execute organizer walkthrough and reset tests. |
@@ -87,7 +87,18 @@ service contracts are implemented.
 
 ## Remaining Linux integration work
 
-- Have the worker submit real report envelopes to `aether-agent`, binding job,
-  principal and tenant IDs from database state and enforcing replay protection.
+- Add replay protection and durable recovery for interrupted archive jobs.
+- Implement the earlier identity milestones that unlock historical tenants and the terminal.
 - Add guest restart/reset and guest-host boundary checks to CI on Linux/KVM and
   the ARM64 TCG development path.
+
+## Archive reporting integration
+
+- Added ordered, transactional migrations and a separate worker service-identity map.
+- Enrolled tenants can queue historical archive CSVs through the app; the worker
+  signs database-derived identities, calls the private VM agent, checks the
+  returned identity and records provenance in tenant-scoped audit events.
+- Live HTTPS/worker/VM verification passed, including enrollment denial, foreign
+  report denial, audit provenance, CSV content and completion notification.
+- Go protocol tests passed for both signature modes, response tenant mismatch
+  rejection and redirect rejection. The production frontend build passed.

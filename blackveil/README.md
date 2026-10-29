@@ -32,8 +32,10 @@ so no host virtualization package is required. A browser terminal is available
 only to identities with the `system_admin` milestone; ordinary workspace
 registration does not grant it. The terminal reaches the guest through the API
 over the private lab network. `make vm-shell` remains an organizer-only route.
-The worker's live report-to-agent job flow and the preceding identity stages
-that grant the milestone are still in progress.
+The worker now sends archive reports to the agent for enrolled historical tenants.
+The preceding identity stages that grant tenant membership and the terminal
+milestone are still in progress. Run `make worker-verify` with the VM running
+to exercise real queued archive delivery.
 
 ## Useful commands
 

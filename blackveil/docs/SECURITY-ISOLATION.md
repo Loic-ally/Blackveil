@@ -30,7 +30,8 @@
   the API's private SSH bridge, and does not publish guest SSH or agent ports.
 - [x] API mounts VM state as a read-only named volume; only the operator key is
   group-readable to the API process, and the guest cannot read that volume.
-- [ ] Worker-to-agent report-job integration and replay protection (Phase 4/5).
+- [x] Worker-to-agent archive delivery uses database-derived identities and bounded responses.
+- [ ] Replay protection and recovery of interrupted jobs (Phase 4/5).
 - [ ] Organizer validator network and evidence submission protocol (Phase 6).
 - [ ] Independent restart/reset test in CI (still listed as Phase 2 work).
 - [ ] Image digest pinning and automated image vulnerability scanning.
