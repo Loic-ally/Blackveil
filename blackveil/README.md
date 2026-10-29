@@ -1,0 +1,44 @@
+# BLACK VEIL · AETHER
+
+BLACK VEIL is a local, isolated cybersecurity CTF built around AETHER Industrial
+Intelligence Platform. The challenge runs in disposable infrastructure and is
+not intended for deployment on a public network.
+
+## Start the current MVP
+
+Requirements: Docker Desktop with Compose, Go 1.23 or newer for local API checks,
+Node.js 20.9 or newer for local web builds, and OpenSSL for the local certificate.
+
+```sh
+cd blackveil
+cp .env.example .env
+make setup
+make up
+```
+
+Map `aether.blackveil.test` to `127.0.0.1` in the host's hosts file if it is not
+already mapped. The setup script prints the required line. Trust the generated
+self-signed certificate locally if desired, then open
+`https://aether.blackveil.test` and create an ordinary operator workspace.
+
+`make setup` generates a local database password and TLS certificate. The
+working MVP currently includes registration and sessions, tenant-scoped
+equipment and telemetry, incident workflows, internal notifications, CSV report
+jobs, audit events, API documentation, PostgreSQL, Redis, NATS and a worker.
+Challenge weaknesses are not part of this baseline increment.
+
+## Useful commands
+
+```sh
+make check          # Go checks, Next.js production build, Compose config check
+make network-check  # Verify only the gateway publishes host ports
+make logs
+make down
+make reset          # Explicitly removes BLACK VEIL persistent volumes
+```
+
+## Build status
+
+See [PROGRESS.md](PROGRESS.md) for phase status. The core identity flaw and the
+first stage specification are in `docs/`; the vulnerable implementation will be
+added only after ordinary application behavior is tested.

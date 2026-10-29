@@ -1,0 +1,44 @@
+name: BLACK VEIL
+
+on:
+  push:
+    paths: ["blackveil/**", ".github/workflows/blackveil.yml"]
+  pull_request:
+    paths: ["blackveil/**", ".github/workflows/blackveil.yml"]
+
+jobs:
+  integration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version: "1.27.x"
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: blackveil/web/package-lock.json
+      - name: Unit checks
+        working-directory: blackveil/api
+        run: go test ./...
+      - name: Build web app
+        working-directory: blackveil/web
+        run: npm ci && npm run build
+      - name: Start isolated services
+        working-directory: blackveil
+        run: |
+          cp .env.example .env
+          sed -i 's/replace-with-a-long-local-only-password/ci-local-only-password-0123456789/' .env
+          ./scripts/setup-local.sh
+          docker compose --env-file .env -f compose.yaml up --build -d
+      - name: Verify business workflows and network boundaries
+        working-directory: blackveil
+        run: |
+          python3 scripts/smoke.py
+          ./scripts/check-network.sh
+      - name: Tear down test environment
+        if: always()
+        working-directory: blackveil
+        run: docker compose --env-file .env -f compose.yaml down --volumes --remove-orphans

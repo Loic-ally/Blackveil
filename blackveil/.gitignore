@@ -1,0 +1,5 @@
+.env
+gateway/certs/*.pem
+api/bin/
+web/node_modules/
+web/.next/
