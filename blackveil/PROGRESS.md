@@ -84,7 +84,7 @@ the application-to-guest progression and later guest stages remain incomplete.
 
 ## Remaining Linux integration work
 
-- Add replay protection and durable recovery for interrupted archive jobs.
+- Add replay protection for worker-to-agent requests.
 - Implement the earlier identity milestones that unlock historical tenants and the terminal.
 - Add guest restart/reset and guest-host boundary checks to CI on Linux/KVM and
   the ARM64 TCG development path.
@@ -149,3 +149,15 @@ the application-to-guest progression and later guest stages remain incomplete.
 - Remaining: this stage demonstrates bounded data access but does not grant the
   intended Linux foothold. The admin membership and terminal progression need a
   fully specified and verified stage.
+
+## Durable report recovery
+
+- Report claims now carry a one-minute lease and an attempt counter. A worker
+  that exits after claiming work leaves a report that can be reclaimed after
+  the lease expires; old unleased `running` rows are returned to the queue by
+  migration 005.
+- `scripts/verify-worker.py` passed a live interruption check: it stopped the
+  worker after queueing a report, marked the claim expired, restarted the worker
+  and confirmed the report completed on its second attempt. Archive delivery,
+  tenant isolation, audit provenance and notifications passed in the same run.
+- Replay protection for guest agent envelopes remains separate work.

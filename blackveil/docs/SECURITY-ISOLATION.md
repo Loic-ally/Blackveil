@@ -31,7 +31,8 @@
 - [x] API mounts VM state as a read-only named volume; only the operator key is
   group-readable to the API process, and the guest cannot read that volume.
 - [x] Worker-to-agent archive delivery uses database-derived identities and bounded responses.
-- [ ] Replay protection and recovery of interrupted jobs (Phase 4/5).
+- [x] Expired lease recovery for reports interrupted after a worker claim.
+- [ ] Replay protection for worker-to-agent envelopes (Phase 4/5).
 - [ ] Organizer validator network and evidence submission protocol (Phase 6).
 - [ ] Independent restart/reset test in CI (still listed as Phase 2 work).
 - [ ] Image digest pinning and automated image vulnerability scanning.

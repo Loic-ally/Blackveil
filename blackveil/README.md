@@ -46,7 +46,7 @@ make network-check  # Verify only the gateway publishes host ports
 make vm-up          # Build and start the disposable Debian Linux guest
 make vm-shell       # Organizer-only SSH through the private QEMU forward
 make vm-verify      # Compare vulnerable and patched native-agent behavior
-make worker-verify  # Verify live worker-to-VM archive delivery
+make worker-verify  # Verify VM archive delivery and interrupted-job recovery
 make team-verify    # Verify invitation and tenant authorization
 make legacy-verify  # Verify Stage 01 in challenge and patched modes
 make vm-reset       # Remove only the two Linux guest disks and keys

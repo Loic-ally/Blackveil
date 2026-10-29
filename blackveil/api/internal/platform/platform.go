@@ -752,14 +752,14 @@ func (s *Server) processOneReport(ctx context.Context) error {
 	}
 	defer tx.Rollback(ctx)
 	var id, tenantID, requestedBy, kind string
-	err = tx.QueryRow(ctx, `SELECT id,tenant_id,requested_by,report_type FROM reports WHERE status='queued' ORDER BY created_at FOR UPDATE SKIP LOCKED LIMIT 1`).Scan(&id, &tenantID, &requestedBy, &kind)
+	err = tx.QueryRow(ctx, `SELECT id,tenant_id,requested_by,report_type FROM reports WHERE status='queued' OR (status='running' AND lease_until<now()) ORDER BY created_at FOR UPDATE SKIP LOCKED LIMIT 1`).Scan(&id, &tenantID, &requestedBy, &kind)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil
 	}
 	if err != nil {
 		return err
 	}
-	if _, err = tx.Exec(ctx, `UPDATE reports SET status='running' WHERE id=$1`, id); err != nil {
+	if _, err = tx.Exec(ctx, `UPDATE reports SET status='running',lease_until=now()+interval '1 minute',attempt_count=attempt_count+1 WHERE id=$1`, id); err != nil {
 		return err
 	}
 	if err = tx.Commit(ctx); err != nil {
@@ -776,13 +776,13 @@ func (s *Server) processOneReport(ctx context.Context) error {
 		content, err = s.maintenanceReport(ctx, tenantID)
 	}
 	if err != nil {
-		_, updateErr := s.db.Exec(ctx, `UPDATE reports SET status='failed',error='report generation failed',completed_at=now() WHERE id=$1`, id)
+		_, updateErr := s.db.Exec(ctx, `UPDATE reports SET status='failed',error='report generation failed',lease_until=NULL,completed_at=now() WHERE id=$1`, id)
 		if updateErr != nil {
 			return updateErr
 		}
 		return err
 	}
-	_, err = s.db.Exec(ctx, `UPDATE reports SET status='complete',content=$1,completed_at=now() WHERE id=$2`, content, id)
+	_, err = s.db.Exec(ctx, `UPDATE reports SET status='complete',content=$1,lease_until=NULL,completed_at=now() WHERE id=$2`, content, id)
 	if err != nil {
 		return err
 	}
