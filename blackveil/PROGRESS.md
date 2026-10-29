@@ -11,7 +11,7 @@ service contracts are implemented.
 | Phase | State | Evidence / next action |
 |---|---|---|
 | 1. Repository initialization | Complete | Project layout, trust-boundary definition, first stage spec, Makefile, Compose, CI, reset/setup scripts and network policy are present. |
-| 2. Application MVP | In progress | Web/API/PostgreSQL/Redis/NATS/worker/telemetry run. Ordinary workflows pass the black-box smoke test. Authentication runs in its own service and worker service identities exist; add admin flows, the legacy service and remaining integration coverage. |
+| 2. Application MVP | In progress | Web/API/PostgreSQL/Redis/NATS/worker/telemetry run. Ordinary workflows pass the black-box smoke test. Authentication runs in its own service and worker service identities exist; Tenant administration and invitations are implemented; add the legacy service and remaining integration coverage. |
 | 3. First playable challenge | Not started | Add the first documented challenge flaw only after baseline behavior is working. |
 | 4. Linux integration | In progress | Disposable Debian 13 QEMU guest, restricted `operator` login, Rust agent and `system_admin`-gated browser terminal are implemented; Live archive reports now use the worker and VM agent; the earlier milestone granting access is pending. |
 | 5. Advanced investigation | Not started | Implement worker/agent trust analysis and native service stages. |
@@ -78,8 +78,7 @@ service contracts are implemented.
 
 - Add dedicated database roles so the auth/API process boundary also restricts database authority.
 - Add the legacy compatibility service and independent service-identity model.
-- Add role enforcement, invitations/user management, and tenant-level admin
-  functions.
+- Add tenant settings and the intended challenge path to administrator membership.
 - Exercise clean restart, reset, and concurrent worker behavior in CI.
 - Make the ordinary UI accessible through the local hostname after the hosts
   entry is installed.
@@ -120,3 +119,15 @@ service contracts are implemented.
   The browser terminal regression passed through the separate auth service after
   the negotiation correction (`scripts/vm-verify.py --terminal-only`).
 - The VM verifier now stops its patched fixture even if deployment fails.
+
+## Team administration
+
+- `/team` supports tenant-scoped member lists, role changes, invitation creation
+  and revocation. `/join` accepts invitations through the auth service. Tokens
+  are stored only as hashes, bound to email, expire after 48 hours and are
+  consumed transactionally. Workspace administrators cannot grant system roles.
+- Live regression passed for operator/foreign-tenant denial, email binding,
+  single use, revoked/expired invitations, role promotion/demotion and immediate
+  session enforcement. Production frontend and Go checks passed.
+- Organizer tests grant a temporary administrator prerequisite and clean up their
+  tenants. Signup still grants ordinary operator access; no admin bypass was added.

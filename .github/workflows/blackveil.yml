@@ -37,6 +37,7 @@ jobs:
         working-directory: blackveil
         run: |
           python3 scripts/smoke.py
+          python3 scripts/verify-team.py
           ./scripts/check-network.sh
       - name: Tear down test environment
         if: always()

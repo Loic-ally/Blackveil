@@ -13,6 +13,7 @@ func (s *Server) AuthHandler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", s.health)
 	mux.HandleFunc("POST /api/auth/register", s.register)
+	mux.HandleFunc("POST /api/auth/invitations/accept", s.acceptInvite)
 	mux.HandleFunc("POST /api/auth/login", s.login)
 	mux.HandleFunc("POST /api/auth/logout", s.logout)
 	mux.Handle("GET /internal/session", s.localAuth(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
