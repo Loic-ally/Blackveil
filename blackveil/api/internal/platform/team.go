@@ -152,7 +152,7 @@ func (s *Server) changeRole(w http.ResponseWriter, r *http.Request) {
 	}
 	defer tx.Rollback(r.Context())
 	// Serialize role decisions within the workspace, and re-check the actor under the lock.
-	_, err = tx.Exec(r.Context(), `SELECT id FROM tenants WHERE id=$1 FOR UPDATE`, p.TenantID)
+	_, err = tx.Exec(r.Context(), `SELECT pg_advisory_xact_lock(hashtextextended($1,0))`, p.TenantID)
 	var actorRole string
 	if err == nil {
 		err = tx.QueryRow(r.Context(), `SELECT role FROM users WHERE id=$1 AND tenant_id=$2`, p.UserID, p.TenantID).Scan(&actorRole)

@@ -14,6 +14,8 @@
 - [x] No container uses `privileged: true`.
 - [x] API, worker, telemetry and web run as unprivileged users; gateway and
   stateful official images retain only narrowly required runtime capabilities.
+- [x] API, auth, worker, telemetry and legacy use separate non-superuser
+  database roles; schema migrations run through a short-lived owner account.
 - [x] Reset removes only this Compose project's named data volumes after a
   deliberate confirmation.
 - [x] Runtime service logs and integration checks are local to the lab.

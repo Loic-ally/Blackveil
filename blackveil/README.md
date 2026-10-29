@@ -49,6 +49,7 @@ make vm-verify      # Compare vulnerable and patched native-agent behavior
 make worker-verify  # Verify VM archive delivery and interrupted-job recovery
 make team-verify    # Verify invitation and tenant authorization
 make legacy-verify  # Verify Stage 01 in challenge and patched modes
+make db-roles-verify # Check service-specific database privileges
 make vm-reset       # Remove only the two Linux guest disks and keys
 make logs
 make down

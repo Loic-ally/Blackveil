@@ -55,10 +55,6 @@ func New(ctx context.Context) (*Server, error) {
 		pool.Close()
 		return nil, err
 	}
-	if err = applyMigrations(ctx, pool); err != nil {
-		pool.Close()
-		return nil, fmt.Errorf("apply schema: %w", err)
-	}
 	var nc *nats.Conn
 	natsURL := env("NATS_URL", "nats://aether-bus:4222")
 	for attempt := 0; attempt < 20; attempt++ {
@@ -866,12 +862,15 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) { s.Handler()
 func Run() error {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
+	mode := env("AETHER_MODE", "api")
+	if mode == "migrate" {
+		return migrate(ctx)
+	}
 	server, err := New(ctx)
 	if err != nil {
 		return err
 	}
 	defer server.Close()
-	mode := env("AETHER_MODE", "api")
 	if mode == "worker" {
 		return server.runWorker(ctx)
 	}

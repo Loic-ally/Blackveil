@@ -11,7 +11,7 @@ the application-to-guest progression and later guest stages remain incomplete.
 | Phase | State | Evidence / next action |
 |---|---|---|
 | 1. Repository initialization | Complete | Project layout, trust-boundary definition, first stage spec, Makefile, Compose, CI, reset/setup scripts and network policy are present. |
-| 2. Application MVP | In progress | Registration, UUID tenant APIs, team invitations, telemetry, incidents, notifications, audit, and asynchronous reports work. Dedicated legacy service and ordinary workflow regressions pass; database service roles and clean-restart CI coverage remain. |
+| 2. Application MVP | In progress | Registration, UUID tenant APIs, team invitations, telemetry, incidents, notifications, audit, and asynchronous reports work. API, auth, worker, telemetry and legacy use separate database roles; clean-restart and concurrent worker CI coverage remain. |
 | 3. First playable challenge | In progress | Stage 01 reproduces a bounded cross-tenant historical export in challenge mode and canonical tenant resolution in patched mode. The route is tested through HTTPS; the path to a guest foothold remains unimplemented. |
 | 4. Linux integration | In progress | Disposable Debian 13 QEMU guest, restricted `operator` login, Rust agent and `system_admin`-gated browser terminal are implemented; Live archive reports now use the worker and VM agent; the earlier milestone granting access is pending. |
 | 5. Advanced investigation | Not started | Implement worker/agent trust analysis and native service stages. |
@@ -76,7 +76,6 @@ the application-to-guest progression and later guest stages remain incomplete.
 
 ## Remaining Phase 2 work
 
-- Add dedicated database roles so the auth/API process boundary also restricts database authority.
 - Add tenant settings and implement the intended challenge path to administrator membership.
 - Exercise clean restart, reset, and concurrent worker behavior in CI.
 - Make the ordinary UI accessible through the local hostname after the hosts
@@ -161,3 +160,18 @@ the application-to-guest progression and later guest stages remain incomplete.
   and confirmed the report completed on its second attempt. Archive delivery,
   tenant isolation, audit provenance and notifications passed in the same run.
 - Replay protection for guest agent envelopes remains separate work.
+
+## Database service roles
+
+- Schema migrations run in a short-lived `aether-migrate` container using the
+  database owner account. The API, auth, worker, telemetry and legacy services
+  each connect with a different non-superuser role; runtime services no longer
+  receive the migration account password.
+- Grants are scoped by service and column where practical. The API can change
+  workspace roles but cannot insert users or alter tenant IDs; auth cannot update
+  user roles; the worker cannot read users; telemetry can only read assets and
+  insert telemetry; legacy can only read archived history.
+- Live checks passed for signup, the complete application smoke flow, team
+  invitations, Stage 01 in both identity modes, archive delivery and recovery of
+  interrupted jobs. `scripts/verify-db-roles.py` confirmed non-superuser roles
+  and the expected grant boundaries.

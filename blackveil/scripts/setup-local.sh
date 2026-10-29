@@ -16,6 +16,11 @@ lines = env_file.read_text().splitlines()
 values = {
     "AETHER_AGENT_KEY": "replace-with-a-random-32-byte-hex-key",
     "AETHER_LEGACY_SERVICE_KEY": "replace-with-a-different-random-32-byte-hex-key",
+    "AETHER_API_DB_PASSWORD": "replace-with-a-random-32-byte-hex-key",
+    "AETHER_AUTH_DB_PASSWORD": "replace-with-a-random-32-byte-hex-key",
+    "AETHER_WORKER_DB_PASSWORD": "replace-with-a-random-32-byte-hex-key",
+    "AETHER_LEGACY_DB_PASSWORD": "replace-with-a-random-32-byte-hex-key",
+    "AETHER_TELEMETRY_DB_PASSWORD": "replace-with-a-random-32-byte-hex-key",
 }
 for name, placeholder in values.items():
     found = False

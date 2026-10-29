@@ -12,6 +12,7 @@ flowchart LR
     A --> PG[(aether-db)]
     A --> R[(aether-cache)]
     A --> N[(aether-bus / NATS)]
+    M[aether-migrate] --> PG
     N --> WK[aether-worker]
     WK -->|service-authenticated :8080| L[aether-legacy]
     WK -->|agent :18080| VM[QEMU Debian VM / Rust aether-agent]
@@ -29,9 +30,10 @@ flowchart LR
 | Gateway | API | TCP 8080 |
 | Gateway | Auth | TCP 8080, credential routes only |
 | API | Auth | TCP 8080, private session resolution |
-| API / auth / worker / telemetry / legacy | PostgreSQL | TCP 5432 on private `data` network |
-| API / auth / worker | Redis | TCP 6379 on private `data` network |
-| API / auth / worker | NATS | TCP 4222 on private `data` network |
+| Migrator | PostgreSQL | TCP 5432 as database owner; one-shot schema bootstrap only |
+| API / auth / worker / telemetry / legacy | PostgreSQL | TCP 5432 on private `data` network with service-specific roles |
+| API / auth / worker / telemetry / legacy | Redis | TCP 6379 on private `data` network |
+| API / auth / worker / telemetry / legacy | NATS | TCP 4222 on private `data` network |
 | Worker | Legacy service | TCP 8080 on private `data` network |
 | Worker | Linux VM agent | TCP 18080 on private `lab` network only |
 | API | Linux VM operator SSH | TCP 2222 on private `lab` network only; initiated after a `system_admin` session check |

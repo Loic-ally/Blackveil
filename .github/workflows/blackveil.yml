@@ -32,13 +32,14 @@ jobs:
           cp .env.example .env
           sed -i 's/replace-with-a-long-local-only-password/ci-local-only-password-0123456789/' .env
           ./scripts/setup-local.sh
-          docker compose --env-file .env -f compose.yaml up --build -d
+          docker compose --env-file .env -f compose.yaml up --build -d --wait
       - name: Verify business workflows and network boundaries
         working-directory: blackveil
         run: |
           python3 scripts/smoke.py
           python3 scripts/verify-team.py
           python3 scripts/verify-legacy.py
+          python3 scripts/verify-db-roles.py
           ./scripts/check-network.sh
       - name: Tear down test environment
         if: always()

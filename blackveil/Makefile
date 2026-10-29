@@ -1,6 +1,6 @@
 COMPOSE = docker compose --env-file .env -f compose.yaml
 
-.PHONY: setup up down reset logs check integration network-check vm-up vm-down vm-reset vm-shell vm-verify worker-verify team-verify legacy-verify
+.PHONY: setup up down reset logs check integration network-check vm-up vm-down vm-reset vm-shell vm-verify worker-verify team-verify legacy-verify db-roles-verify
 
 setup:
 	@test -f .env || cp .env.example .env
@@ -54,3 +54,6 @@ team-verify:
 
 legacy-verify:
 	python3 scripts/verify-legacy.py
+
+db-roles-verify:
+	python3 scripts/verify-db-roles.py

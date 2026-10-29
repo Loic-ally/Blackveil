@@ -14,9 +14,10 @@ no redirects and uses a three-second request deadline. Revoked sessions return
 The private session route is not forwarded by the gateway.
 
 Auth joins the private app and data networks. It has no VM volume, lab network
-membership or published ports. This is a process and network boundary; both
-services still share the database account. Separate least-privilege database
-roles and migration ownership remain required before final hardening.
+membership or published ports. Auth and API use separate non-superuser database
+roles. Schema ownership is held by the short-lived `aether-migrate` service;
+auth cannot change user roles and the API cannot create users or change tenant
+membership IDs.
 
 Verification: Go authority-contract tests cover rejection and identity
 propagation; `scripts/smoke.py` exercises registration, login, logout and tenant
