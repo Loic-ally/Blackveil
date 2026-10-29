@@ -9,7 +9,7 @@ on:
 jobs:
   integration:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 35
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7
@@ -41,6 +41,12 @@ jobs:
           python3 scripts/verify-legacy.py
           python3 scripts/verify-db-roles.py
           ./scripts/check-network.sh
+      - name: Verify Linux VM, worker archive and terminal boundary
+        working-directory: blackveil
+        run: |
+          docker compose --env-file .env -f compose.yaml --profile vm up -d --build --wait --wait-timeout 600 aether-linux-vm
+          python3 scripts/verify-worker.py
+          python3 scripts/vm-verify.py
       - name: Tear down test environment
         if: always()
         working-directory: blackveil
