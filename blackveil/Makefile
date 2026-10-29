@@ -59,11 +59,9 @@ recovery-verify:
 web-chain-verify:
 	python3 scripts/verify-chain.py --web
 
-# Full scope: Stages 01-08. Both the challenge and patched Linux guests are
-# mandatory, so bring them up (and wait) before driving the player path. A
-# missing or unhealthy guest makes the verifier exit nonzero, never skip.
+# Full scope requires already-running challenge and patched guests.
+# Provision explicitly with vm-up / vm-verify; verification must not hide absence.
 chain-verify:
-	$(COMPOSE) --profile vm --profile vm-verify up -d --build --wait --wait-timeout 600 aether-linux-vm aether-linux-vm-patched
 	python3 scripts/verify-chain.py
 
 team-verify:
