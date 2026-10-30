@@ -125,6 +125,11 @@ fn handle(mut stream: TcpStream, mode: &str, key: &str, provenance: &str, tenant
             let (status, value) = provenance_decision(mode, provenance, &body);
             respond(&mut stream, status, value);
         }
+        // Stage 13 (additive): correlate worker/agent/API facts into a manifest.
+        ("POST", "/v1/manifest") => {
+            let (status, value) = manifest_decision(mode, provenance, tenants, &body);
+            respond(&mut stream, status, value);
+        }
         _ => respond(&mut stream, 404, serde_json::json!({"error":"not found"})),
     }
 }
@@ -135,41 +140,93 @@ fn handle(mut stream: TcpStream, mode: &str, key: &str, provenance: &str, tenant
 // may edit the JSON while keeping tlv+sig, and the consumer trusts the edit.
 // Patched mode derives the identity from the verified TLV and rejects any JSON
 // that disagrees.
+type ProvenanceIdentity = (String, String, u64);
+
+/// Verify a provenance blob's signature over its TLV and resolve the identity the
+/// consumer will act on. Challenge returns the UNAUTHENTICATED JSON identity (the
+/// Stage 12 gap); patched derives it from the signed TLV and rejects disagreement.
+fn resolve_provenance(mode: &str, provenance_key: &str, blob: &serde_json::Value)
+    -> Result<ProvenanceIdentity, (u16, serde_json::Value)> {
+    let tlv_hex = blob.get("tlv").and_then(|v| v.as_str()).unwrap_or_default();
+    let signature = blob.get("sig").and_then(|v| v.as_str()).unwrap_or_default();
+    let tlv = decode_hex(tlv_hex).ok_or((400, serde_json::json!({"error": "invalid provenance"})))?;
+    if !verify_signature(provenance_key, &tlv, signature) {
+        return Err((403, serde_json::json!({"error": "provenance signature rejected"})));
+    }
+    let json_service = blob.get("service").and_then(|v| v.as_str()).unwrap_or_default().to_owned();
+    let json_uuid = blob.get("tenant_uuid").and_then(|v| v.as_str()).unwrap_or_default().to_owned();
+    let json_no = blob.get("legacy_tenant_no").and_then(|v| v.as_u64());
+    if mode == "patched" {
+        let (tlv_service, tlv_uuid, tlv_no) = parse_provenance_tlv(&tlv)
+            .ok_or((400, serde_json::json!({"error": "invalid provenance"})))?;
+        if json_service != tlv_service || json_uuid != tlv_uuid || json_no != Some(tlv_no) {
+            return Err((403, serde_json::json!({"error": "provenance field mismatch"})));
+        }
+        return Ok((tlv_service, tlv_uuid, tlv_no));
+    }
+    let number = json_no.ok_or((400, serde_json::json!({"error": "invalid provenance"})))?;
+    Ok((json_service, json_uuid, number))
+}
+
 fn provenance_decision(mode: &str, provenance_key: &str, body: &[u8]) -> (u16, serde_json::Value) {
     let blob: serde_json::Value = match serde_json::from_slice(body) {
         Ok(value) => value,
         Err(_) => return (400, serde_json::json!({"error": "invalid provenance"})),
     };
-    let tlv_hex = blob.get("tlv").and_then(|v| v.as_str()).unwrap_or_default();
-    let signature = blob.get("sig").and_then(|v| v.as_str()).unwrap_or_default();
-    let tlv = match decode_hex(tlv_hex) {
-        Some(bytes) => bytes,
-        None => return (400, serde_json::json!({"error": "invalid provenance"})),
-    };
-    if !verify_signature(provenance_key, &tlv, signature) {
-        return (403, serde_json::json!({"error": "provenance signature rejected"}));
+    match resolve_provenance(mode, provenance_key, &blob) {
+        Err(error) => error,
+        Ok((service, uuid, number)) => (200, serde_json::json!({
+            "verified": true, "service": service, "tenant_uuid": uuid,
+            "legacy_tenant_no": number, "source": if mode == "patched" { "tlv" } else { "json" }
+        })),
     }
-    let json_service = blob.get("service").and_then(|v| v.as_str()).unwrap_or_default();
-    let json_uuid = blob.get("tenant_uuid").and_then(|v| v.as_str()).unwrap_or_default();
-    let json_no = blob.get("legacy_tenant_no").and_then(|v| v.as_u64());
-    if mode == "patched" {
-        // Bind the consumed identity to the signed bytes.
-        let parsed = match parse_provenance_tlv(&tlv) {
-            Some(parsed) => parsed,
-            None => return (400, serde_json::json!({"error": "invalid provenance"})),
-        };
-        let (tlv_service, tlv_uuid, tlv_no) = parsed;
-        if json_service != tlv_service || json_uuid != tlv_uuid || json_no != Some(tlv_no) {
-            return (403, serde_json::json!({"error": "provenance field mismatch"}));
-        }
-        return (200, serde_json::json!({
-            "verified": true, "service": tlv_service, "tenant_uuid": tlv_uuid,
-            "legacy_tenant_no": tlv_no, "source": "tlv"
-        }));
+}
+
+// Stage 13 (BV-13): assemble a deployment manifest from three independently
+// sourced facts — a worker job reference (Stage 07 capture), an agent-verified
+// provenance token (Stage 12), and the API migration mapping (Stage 03).
+// Challenge mode checks each fact in isolation and that the mapping agrees with
+// the provenance's *asserted* identity, but never binds that identity to the
+// signed TLV or to a caller — so a North-signed token carrying a Harbor JSON
+// identity plus a Harbor mapping yields a Harbor manifest. Patched mode resolves
+// the provenance against the signed TLV (so a forged identity is rejected
+// upstream) and requires the mapping to match it.
+fn manifest_decision(mode: &str, provenance_key: &str, tenants: &HashMap<String, u64>, body: &[u8])
+    -> (u16, serde_json::Value) {
+    let request: serde_json::Value = match serde_json::from_slice(body) {
+        Ok(value) => value,
+        Err(_) => return (400, serde_json::json!({"error": "invalid manifest request"})),
+    };
+    let job_ref = request.get("job_ref").and_then(|v| v.as_str()).unwrap_or_default();
+    if !is_safe_job_id(job_ref) {
+        return (400, serde_json::json!({"error": "invalid job reference"}));
+    }
+    let blob = match request.get("provenance") {
+        Some(value) => value,
+        None => return (400, serde_json::json!({"error": "invalid manifest request"})),
+    };
+    let (_service, uuid, number) = match resolve_provenance(mode, provenance_key, blob) {
+        Ok(identity) => identity,
+        Err(error) => return error,
+    };
+    // The API migration mapping (tenant_uuid <-> legacy_tenant_no), supplied by
+    // the caller, must be internally consistent with the agent's tenant map.
+    let map_uuid = request.pointer("/mapping/tenant_uuid").and_then(|v| v.as_str()).unwrap_or_default();
+    let map_no = request.pointer("/mapping/legacy_tenant_no").and_then(|v| v.as_u64());
+    if tenants.get(map_uuid).copied() != map_no || map_no.is_none() {
+        return (403, serde_json::json!({"error": "mapping unknown"}));
+    }
+    // The three facts must name one identity. No check binds them to the signed
+    // TLV (challenge) or to the caller — that is the distributed-trust failure.
+    if map_uuid != uuid || map_no != Some(number) {
+        return (403, serde_json::json!({"error": "trust chain broken"}));
     }
     (200, serde_json::json!({
-        "verified": true, "service": json_service, "tenant_uuid": json_uuid,
-        "legacy_tenant_no": json_no, "source": "json"
+        "manifest": format!("deploy-{number}"),
+        "tenant_uuid": uuid,
+        "job_ref": job_ref,
+        "evidence": "/var/lib/aether-migration/incident",
+        "next": "everything-was-logged"
     }))
 }
 
@@ -417,5 +474,65 @@ mod provenance_tests {
         let (challenge, _) = provenance_decision("challenge", &key, &raw);
         let (patched, _) = provenance_decision("patched", &key, &raw);
         assert_eq!((challenge, patched), (403, 403));
+    }
+
+    const HARBOR: &str = "9a8b7c6d-5e4f-4321-8abc-def012345678";
+
+    fn tenant_map() -> HashMap<String, u64> {
+        HashMap::from([(UUID.to_owned(), 4101), (HARBOR.to_owned(), 4102)])
+    }
+
+    fn blob_val(json_uuid: &str, json_no: u64, tlv_uuid: &str, tlv_no: u64) -> serde_json::Value {
+        let tlv = tlv(SERVICE, tlv_uuid, tlv_no, 1_793_000_000);
+        serde_json::json!({
+            "format": "provenance/1", "service": SERVICE, "tenant_uuid": json_uuid,
+            "legacy_tenant_no": json_no, "issued_at": 1_793_000_000u64,
+            "tlv": to_hex(&tlv), "sig": sign(&tlv),
+        })
+    }
+
+    fn manifest_req(blob: serde_json::Value, map_uuid: &str, map_no: u64, job: &str) -> Vec<u8> {
+        serde_json::json!({
+            "provenance": blob,
+            "mapping": {"tenant_uuid": map_uuid, "legacy_tenant_no": map_no},
+            "job_ref": job,
+        }).to_string().into_bytes()
+    }
+
+    #[test]
+    fn challenge_manifest_crosses_tenants() {
+        // North-signed TLV, Harbor JSON, Harbor mapping -> Harbor manifest.
+        let key = provenance_key(WORKER);
+        let body = manifest_req(blob_val(HARBOR, 4102, UUID, 4101), HARBOR, 4102, "mig-capture-abcd");
+        let (status, value) = manifest_decision("challenge", &key, &tenant_map(), &body);
+        assert_eq!(status, 200);
+        assert_eq!(value["manifest"], serde_json::json!("deploy-4102"));
+        assert_eq!(value["tenant_uuid"], serde_json::json!(HARBOR));
+    }
+
+    #[test]
+    fn challenge_manifest_requires_correlated_mapping() {
+        let key = provenance_key(WORKER);
+        // Harbor JSON identity but a North mapping -> the facts disagree.
+        let body = manifest_req(blob_val(HARBOR, 4102, UUID, 4101), UUID, 4101, "mig-capture-abcd");
+        let (status, value) = manifest_decision("challenge", &key, &tenant_map(), &body);
+        assert_eq!((status, value["error"].clone()), (403, serde_json::json!("trust chain broken")));
+    }
+
+    #[test]
+    fn manifest_rejects_unknown_mapping_and_bad_job() {
+        let key = provenance_key(WORKER);
+        let bad_map = manifest_req(blob_val(HARBOR, 4102, UUID, 4101), HARBOR, 9999, "mig-capture-abcd");
+        assert_eq!(manifest_decision("challenge", &key, &tenant_map(), &bad_map).0, 403);
+        let bad_job = manifest_req(blob_val(HARBOR, 4102, UUID, 4101), HARBOR, 4102, "bad job!");
+        assert_eq!(manifest_decision("challenge", &key, &tenant_map(), &bad_job).0, 400);
+    }
+
+    #[test]
+    fn patched_manifest_refuses_forged_identity() {
+        let key = provenance_key(WORKER);
+        let body = manifest_req(blob_val(HARBOR, 4102, UUID, 4101), HARBOR, 4102, "mig-capture-abcd");
+        let (status, value) = manifest_decision("patched", &key, &tenant_map(), &body);
+        assert_eq!((status, value["error"].clone()), (403, serde_json::json!("provenance field mismatch")));
     }
 }

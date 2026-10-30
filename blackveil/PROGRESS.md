@@ -69,8 +69,18 @@ altering Stages 01–08.
   signed TLV and rejects a mismatch. No primitive is broken. Verified by 4 host
   `cargo test` vectors and live through the player terminal in `make chain-verify`
   (Stages 01–12, exit 0). Spec: `docs/stages/stage-12.md`.
-- **Stages 13–15:** designed in `attack-graph-v3.md`; not yet implemented.
-  Stage 13 (Broken Trust Chain) chains the forged token across ≥3 components.
+- **Stage 13 — The Broken Trust Chain (distributed systems): implemented and
+  live-verified.** Additive agent `POST /v1/manifest` correlates three facts from
+  three tiers — the worker `job_id` (Stage 07 capture), the forged agent-verified
+  provenance token (Stage 12), and the API migration mapping (Stage 03). Challenge
+  mode validates each fact and that they agree with the provenance's *asserted*
+  identity, but never binds them to the signed TLV or the caller, so a North-signed
+  token with a Harbor JSON identity + Harbor mapping yields a cross-tenant manifest
+  (`deploy-4102`); patched mode resolves against the signed TLV and refuses.
+  Verified by 4 host `cargo test` vectors and live through the player terminal in
+  `make chain-verify` (Stages 01–13, exit 0). Spec: `docs/stages/stage-13.md`.
+- **Stages 14–15:** designed in `attack-graph-v3.md`; not yet implemented.
+  Stage 14 (forensics) reconstructs the incident the manifest points at.
 
 ## Milestones
 

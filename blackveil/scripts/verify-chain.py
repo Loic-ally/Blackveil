@@ -11,7 +11,7 @@ Two explicit scopes (Requirement 3):
   --web   Application-only: Stages 01-05 plus the patched-mode regressions.
           The Linux guest is NOT required. (`make web-chain-verify`)
 
-  (full)  Default: Stages 01-12. The Linux guest and its patched fixture are
+  (full)  Default: Stages 01-13. The Linux guest and its patched fixture are
           MANDATORY. A missing or unreachable guest is a hard failure that
           names the stages not executed and exits nonzero — it never prints a
           full-chain success message. (`make chain-verify`)
@@ -228,15 +228,15 @@ def boot_epoch(text):
     return line.replace("-", "")[:8]
 
 
-def agent_provenance_probe(blob_json):
-    """A single `python3 -c` command that POSTs a provenance blob to the agent's
-    /v1/provenance endpoint and prints the reply body (including error bodies).
+def agent_post_probe(path, body_json):
+    """A single `python3 -c` command that POSTs a JSON body to an agent endpoint
+    (127.0.0.1:8080) and prints the reply body (including error bodies).
     base64-wrapped for the terminal and SSH."""
     prog = (
         "import urllib.request,urllib.error\n"
-        # Double-encode so the blob embeds as a Python string literal, not a dict.
-        f"body={json.dumps(json.dumps(blob_json))}.encode()\n"
-        "req=urllib.request.Request('http://127.0.0.1:8080/v1/provenance',data=body,"
+        # Double-encode so the body embeds as a Python string literal, not a dict.
+        f"body={json.dumps(json.dumps(body_json))}.encode()\n"
+        f"req=urllib.request.Request('http://127.0.0.1:8080{path}',data=body,"
         "headers={'Content-Type':'application/json'},method='POST')\n"
         "try:\n"
         " print(urllib.request.urlopen(req,timeout=5).read().decode())\n"
@@ -539,7 +539,7 @@ def run(web=False):
 
                 # ---- Stage 12: the integrity paradox (provenance verification) ----
                 # The genuine blob verifies; the agent reports the JSON identity.
-                genuine = json.loads(terminal.ok(agent_provenance_probe(blob)))
+                genuine = json.loads(terminal.ok(agent_post_probe("/v1/provenance", blob)))
                 require(genuine.get("verified") is True and genuine.get("legacy_tenant_no") == 4101
                         and genuine.get("tenant_uuid") == NORTH,
                         f"genuine provenance did not verify: {genuine}")
@@ -548,15 +548,38 @@ def run(web=False):
                 forged = dict(blob)
                 forged["legacy_tenant_no"] = 4102
                 forged["tenant_uuid"] = HARBOR
-                confused = json.loads(terminal.ok(agent_provenance_probe(forged)))
+                confused = json.loads(terminal.ok(agent_post_probe("/v1/provenance", forged)))
                 require(confused.get("verified") is True and confused.get("legacy_tenant_no") == 4102
                         and confused.get("tenant_uuid") == HARBOR and confused.get("source") == "json",
                         f"challenge verifier did not trust the edited JSON identity: {confused}")
+                print("PASS: challenge stage 12 — the provenance signature covers the canonical TLV, "
+                      "but the verifier trusts the JSON fields: an edited identity with the original "
+                      "signature is accepted (integrity paradox).", flush=True)
+
+                # ---- Stage 13: the broken trust chain ----
+                # Three facts from three components: the worker job_id (Stage 07
+                # capture), the forged agent-verified provenance (Stage 12), and the
+                # API migration mapping for Harbor (Stage 03).
+                manifest_request = {
+                    "provenance": forged,
+                    "mapping": {"tenant_uuid": HARBOR, "legacy_tenant_no": 4102},
+                    "job_ref": envelope["job_id"],
+                }
+                manifest = json.loads(terminal.ok(agent_post_probe("/v1/manifest", manifest_request)))
+                require(manifest.get("manifest") == "deploy-4102"
+                        and manifest.get("tenant_uuid") == HARBOR
+                        and manifest.get("next") == "everything-was-logged",
+                        f"trust chain did not assemble a cross-tenant manifest: {manifest}")
+                # No single fact suffices: a mismatched mapping breaks the chain.
+                broken = json.loads(terminal.ok(agent_post_probe("/v1/manifest", dict(
+                    manifest_request, mapping={"tenant_uuid": NORTH, "legacy_tenant_no": 4101}))))
+                require(broken.get("error") == "trust chain broken",
+                        f"trust chain accepted uncorrelated facts: {broken}")
             finally:
                 terminal.close()
-            print("PASS: challenge stage 12 — the provenance signature covers the canonical TLV, "
-                  "but the verifier trusts the JSON fields: an edited identity with the original "
-                  "signature is accepted (integrity paradox).", flush=True)
+            print("PASS: challenge stage 13 — correlating the worker job reference, the forged "
+                  "provenance token and the API mapping assembles a cross-tenant deployment "
+                  "manifest that no single service would grant (broken distributed trust).", flush=True)
 
             # Patched VM regression (organizer independent assertion — no player
             # terminal reaches this fixture): the patched agent signs the number and the
@@ -620,11 +643,24 @@ def run(web=False):
             # use the .env agent key), so the extracted blob verifies there too.
             p_forged = dict(blob)
             p_forged["legacy_tenant_no"] = 4102
-            p_conf = json.loads(guest("aether-linux-vm-patched", agent_provenance_probe(p_forged)))
+            p_conf = json.loads(guest("aether-linux-vm-patched", agent_post_probe("/v1/provenance", p_forged)))
             require(p_conf.get("error") == "provenance field mismatch",
                     f"patched verifier trusted an edited JSON identity: {p_conf}")
             print("PASS: patched stage 12 — the patched verifier derives identity from the signed "
                   "TLV and rejects JSON that disagrees.", flush=True)
+
+            # Patched Stage 13 (organizer assertion): the patched manifest resolves
+            # provenance against the signed TLV, so the forged cross-tenant token is
+            # refused before any manifest is assembled.
+            p_manifest = json.loads(guest("aether-linux-vm-patched", agent_post_probe("/v1/manifest", {
+                "provenance": dict(blob, legacy_tenant_no=4102, tenant_uuid=HARBOR),
+                "mapping": {"tenant_uuid": HARBOR, "legacy_tenant_no": 4102},
+                "job_ref": envelope["job_id"],
+            })))
+            require(p_manifest.get("error") == "provenance field mismatch",
+                    f"patched manifest assembled from a forged token: {p_manifest}")
+            print("PASS: patched stage 13 — the patched manifest binds identity to the signed "
+                  "provenance and refuses the cross-tenant assertion.", flush=True)
 
         # ---- Patched mode: the Stage 03 disclosure is closed ----
         legacy.switch("patched")
@@ -659,8 +695,8 @@ def run(web=False):
             print("OK: application-only chain verified — Stages 01-05 (challenge) and the "
                   "patched 03/04/05 regressions. Linux Stages 06-08 not in scope.", flush=True)
         else:
-            print("OK: full chain verified — Stages 01-12 (challenge) through the real player "
-                  "interfaces, plus the patched 03/04/05/08/09/10/11/12 regressions.", flush=True)
+            print("OK: full chain verified — Stages 01-13 (challenge) through the real player "
+                  "interfaces, plus the patched 03/04/05/08/09/10/11/12/13 regressions.", flush=True)
     finally:
         try:
             for profile in profiles:
