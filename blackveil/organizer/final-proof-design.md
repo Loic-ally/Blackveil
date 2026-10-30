@@ -44,7 +44,7 @@ chain to obtain).
 - Web half (01–05) → `system_admin` and the migration/mapping knowledge (Harbor
   ↔ 4102) used in the manifest and bundle.
 - Linux/native half (06–11) → the operator shell, the forgotten-binary bypass, the
-  provisioner handshake, and the false-root extraction of the provenance blob.
+  provisioner handshake, and the privileged-reader extraction of the provenance blob.
 - Crypto/distributed/forensic half (12–14) → the integrity-paradox token, the
   cross-tenant manifest, and the incident attestation.
 - Stage 15 ties them to the public identity clue and gates the flag behind the

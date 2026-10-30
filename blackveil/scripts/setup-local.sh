@@ -14,6 +14,7 @@ if placeholder in text:
 
 lines = env_file.read_text().splitlines()
 values = {
+    "AETHER_VALIDATOR_TOKEN": "replace-with-a-random-32-byte-hex-key",
     "AETHER_AGENT_KEY": "replace-with-a-random-32-byte-hex-key",
     "AETHER_LEGACY_SERVICE_KEY": "replace-with-a-different-random-32-byte-hex-key",
     "AETHER_API_DB_PASSWORD": "replace-with-a-random-32-byte-hex-key",

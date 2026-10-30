@@ -132,6 +132,7 @@ services:
       AETHER_MODE: api
       AETHER_IDENTITY_MODE: ${AETHER_IDENTITY_MODE:-challenge}
       AETHER_AUTH_URL: http://aether-auth:8080
+      AETHER_VALIDATOR_TOKEN: ${AETHER_VALIDATOR_TOKEN:?Run scripts/setup-local.sh}
       LISTEN_ADDR: ":8080"
       DATABASE_URL: postgres://aether_api:${AETHER_API_DB_PASSWORD}@aether-db:5432/${AETHER_POSTGRES_DB:-aether}?sslmode=disable
       NATS_URL: nats://aether-bus:4222
@@ -151,7 +152,7 @@ services:
         condition: service_started
       aether-cache:
         condition: service_healthy
-    networks: [app, data, lab]
+    networks: [app, data, lab, validator]
     group_add: ["10001"]
     volumes:
       - linux-vm-state:/var/lib/aether-vm:ro
@@ -259,10 +260,10 @@ services:
     restart: unless-stopped
 
   aether-validator:
-    profiles: [validator]
     image: python:3.13-alpine
     command: ["python3", "-I", "/opt/validator/validate.py"]
     environment:
+      AETHER_VALIDATOR_TOKEN: ${AETHER_VALIDATOR_TOKEN:?Run scripts/setup-local.sh}
       AETHER_AGENT_KEY: ${AETHER_AGENT_KEY}
     volumes:
       - ./organizer/validator:/opt/validator:ro

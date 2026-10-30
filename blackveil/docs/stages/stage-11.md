@@ -1,8 +1,8 @@
-# Stage 11 — False Root
+# Stage 11 — The Privileged Reader
 
 **Stage ID**
 
-`BV-11-FALSE-ROOT`
+`BV-11-PRIVILEGED-READER`
 
 **Domain**
 
@@ -19,7 +19,7 @@ guest-root secrets or escape the guest.
 **Starting knowledge (entry condition)**
 
 Stage 10: a completed `describe` handshake to the provisioner over its abstract
-socket, and the Stage 11 reference (`next: false-root`). The player holds the
+socket, and the Stage 11 reference (`next: privileged-reader`). The player holds the
 `operator` shell.
 
 **System components**

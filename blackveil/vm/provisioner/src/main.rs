@@ -13,7 +13,7 @@
 //! correlation is sufficient. Patched mode instead requires a `ticket` the
 //! operator cannot derive from world-readable state, closing the shortcut.
 //!
-//! Stage 11 ("False Root") is served by the `provision` op; its controlled
+//! Stage 11 ("The Privileged Reader") is served by the `provision` op; its controlled
 //! design mistake and patch live in `handle_request` and are documented in
 //! `docs/stages/stage-11.md`. Until Stage 11 lands, `provision` is refused.
 
@@ -65,7 +65,7 @@ fn describe() -> Value {
         "provision": {
             "note": "submit op=provision with arg=<template>; the provisioning \
                      deputy renders it from the confined store as its own identity",
-            "next": "false-root"
+            "next": "privileged-reader"
         }
     })
 }

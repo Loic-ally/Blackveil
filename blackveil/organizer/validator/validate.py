@@ -16,6 +16,10 @@ import json
 import os
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
+TOKEN = os.environ["AETHER_VALIDATOR_TOKEN"]
+if len(TOKEN) < 32:
+    raise RuntimeError("validator token is not configured")
+
 KEY = bytes.fromhex(os.environ["AETHER_AGENT_KEY"])
 HARBOR = "9a8b7c6d-5e4f-4321-8abc-def012345678"
 VEIL_TAG = "veil/v0"  # the public-site clue; load-bearing in the proof
@@ -44,7 +48,7 @@ def evaluate(bundle):
     want = expected()
     missing = [field for field, value in want.items() if bundle.get(field) != value]
     if missing:
-        return {"black_veil": False, "missing": missing}
+        return {"black_veil": False}
     flag = "BV{" + _hmac(KEY, b"black-veil-flag/v0")[:24] + "}"
     return {"black_veil": True, "flag": flag,
             "message": "The veil is lifted: one trust model, two identities, end to end."}
@@ -67,7 +71,15 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
         if self.path != "/validate":
             return self._send(404, {"error": "not found"})
-        length = int(self.headers.get("Content-Length", "0") or "0")
+        if not hmac.compare_digest(self.headers.get("Authorization", ""), "Bearer " + TOKEN):
+            return self._send(401, {"error": "unauthorized"})
+        try:
+            length = int(self.headers.get("Content-Length", "0"))
+        except ValueError:
+            return self._send(400, {"error": "invalid proof"})
+        if not 0 < length <= 8192:
+            return self._send(413, {"error": "invalid proof"})
+        self.connection.settimeout(5)
         try:
             bundle = json.loads(self.rfile.read(length) or b"{}")
         except json.JSONDecodeError:

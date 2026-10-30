@@ -39,6 +39,9 @@ type Server struct {
 	vmSSHAddress     string
 	vmSSHKeyPath     string
 	vmSSHHostKeyPath string
+	validatorToken   string
+	validatorURL     string
+	validatorClient  *http.Client
 }
 
 type principal struct {
@@ -87,6 +90,14 @@ func New(ctx context.Context) (*Server, error) {
 		vmSSHAddress:     env("AETHER_VM_SSH_ADDRESS", "aether-linux-vm:2222"),
 		vmSSHKeyPath:     env("AETHER_VM_SSH_KEY_PATH", "/var/lib/aether-vm/operator_ed25519"),
 		vmSSHHostKeyPath: env("AETHER_VM_SSH_HOST_KEY_PATH", "/var/lib/aether-vm/guest_host_ed25519.pub"),
+		validatorToken:   env("AETHER_VALIDATOR_TOKEN", ""),
+		validatorURL:     env("AETHER_VALIDATOR_URL", "http://aether-validator:9000"),
+		// No redirects: the validator is a fixed internal endpoint, never a
+		// caller-influenced URL.
+		validatorClient: &http.Client{
+			Timeout:       6 * time.Second,
+			CheckRedirect: func(_ *http.Request, _ []*http.Request) error { return http.ErrUseLastResponse },
+		},
 	}, nil
 }
 
@@ -107,6 +118,8 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("POST /api/v2/tenant/reporting-identity", s.auth(s.sameOrigin(http.HandlerFunc(s.enrollReportingIdentity))))
 	mux.Handle("POST /api/v2/lab/operator-recovery", s.auth(s.sameOrigin(http.HandlerFunc(s.recoverOperator))))
 	mux.Handle("GET /api/lab/terminal", s.auth(http.HandlerFunc(s.terminal)))
+	mux.Handle("GET /api/v2/lab/final-proof", s.auth(http.HandlerFunc(s.finalProofStatus)))
+	mux.Handle("POST /api/v2/lab/final-proof", s.auth(s.sameOrigin(http.HandlerFunc(s.submitFinalProof))))
 	mux.Handle("GET /api/dashboard", s.auth(http.HandlerFunc(s.dashboard)))
 	mux.Handle("GET /api/assets", s.auth(http.HandlerFunc(s.assets)))
 	mux.Handle("POST /api/assets", s.auth(s.sameOrigin(http.HandlerFunc(s.createAsset))))

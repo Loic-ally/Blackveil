@@ -176,3 +176,63 @@
   .output { min-height: 300px; padding: 13px; font-size: 11px; }
   .terminalHead { padding: 0 10px; font-size: 8px; }
 }
+
+.finalProof {
+  margin-top: 20px;
+  border: 1px solid #1f2a24;
+  border-radius: 10px;
+  overflow: hidden;
+  background: #0b100d;
+}
+
+.proofForm {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px;
+
+  label { color: #8aa99a; font: 10px/1.6 monospace; }
+
+  textarea {
+    min-height: 120px;
+    resize: vertical;
+    background: #050806;
+    border: 1px solid #1f2a24;
+    border-radius: 6px;
+    padding: 11px;
+    color: #cfe6d9;
+    font: 12px/1.5 monospace;
+  }
+
+  button {
+    align-self: flex-start;
+    background: #d7f7e6;
+    color: #05221a;
+    border: 0;
+    border-radius: 6px;
+    padding: 8px 15px;
+    font: 600 11px monospace;
+    cursor: pointer;
+
+    &:disabled { cursor: not-allowed; opacity: .45; }
+  }
+}
+
+.proofFeedback { color: #e6a98a; font: 10px/1.6 monospace; margin: 0; }
+
+.proofDone {
+  padding: 16px;
+
+  p { color: #9ff5c6; font: 11px/1.6 monospace; margin: 0 0 10px; }
+
+  code {
+    display: block;
+    background: #050806;
+    border: 1px solid #1f3a2b;
+    border-radius: 6px;
+    padding: 12px;
+    color: #d7f7e6;
+    font: 13px monospace;
+    word-break: break-all;
+  }
+}

@@ -17,6 +17,10 @@ export default function LinuxLab() {
   const [state, setState] = useState("Checking workspace access");
   const [output, setOutput] = useState("");
   const [command, setCommand] = useState("");
+  const [proof, setProof] = useState("");
+  const [proofState, setProofState] = useState<"pending" | "complete" | "working">("pending");
+  const [proofFlag, setProofFlag] = useState("");
+  const [proofFeedback, setProofFeedback] = useState("");
 
   useEffect(() => {
     let active = true;
@@ -38,6 +42,16 @@ export default function LinuxLab() {
           return;
         }
         setState("Opening restricted operator session");
+        fetch("/api/v2/lab/final-proof", { credentials: "include" })
+          .then(response => (response.ok ? response.json() : null))
+          .then(status => {
+            if (!active || !status) return;
+            if (status.status === "complete") {
+              setProofState("complete");
+              setProofFlag(status.flag || "");
+            }
+          })
+          .catch(() => undefined);
         const scheme = window.location.protocol === "https:" ? "wss:" : "ws:";
         socket = new WebSocket(`${scheme}//${window.location.host}/api/lab/terminal`);
         socketRef.current = socket;
@@ -70,6 +84,41 @@ export default function LinuxLab() {
     historyIndex.current = 0;
     socket.send(`${command}\r`);
     setCommand("");
+  }
+
+  async function submitProof(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(proof);
+    } catch {
+      setProofFeedback("Proof must be valid JSON.");
+      return;
+    }
+    setProofState("working");
+    setProofFeedback("");
+    try {
+      const response = await fetch("/api/v2/lab/final-proof", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ proof: parsed }),
+      });
+      const result = await response.json();
+      if (response.ok && result.status === "complete") {
+        setProofState("complete");
+        setProofFlag(result.flag || "");
+      } else if (result.status === "incomplete") {
+        setProofState("pending");
+        setProofFeedback("Proof rejected. Check your complete evidence bundle and try again.");
+      } else {
+        setProofState("pending");
+        setProofFeedback(result.error || "Submission could not be validated.");
+      }
+    } catch {
+      setProofState("pending");
+      setProofFeedback("Submission failed. Try again shortly.");
+    }
   }
 
   function keyDown(event: KeyboardEvent<HTMLInputElement>) {
@@ -111,6 +160,22 @@ export default function LinuxLab() {
         </form>}
       </div>
       <p className={styles.footnote}>Guest filesystem and services are disposable. The console does not expose host or Docker controls.</p>
+      {role === "system_admin" && <div className={styles.finalProof}>
+        <div className={styles.terminalHead}><span>FINAL PROOF SUBMISSION</span><span>BLACK VEIL</span></div>
+        {proofState === "complete"
+          ? <div className={styles.proofDone}>
+              <p>Challenge complete. Final proof accepted.</p>
+              <code>{proofFlag}</code>
+            </div>
+          : <form className={styles.proofForm} onSubmit={submitProof}>
+              <label htmlFor="final-proof">Submit your assembled final proof (JSON). It is validated by an isolated service; the flag is issued only on a complete, correct proof.</label>
+              <textarea id="final-proof" aria-label="Final proof JSON" spellCheck={false} value={proof}
+                onChange={event => setProof(event.target.value)}
+                placeholder={'{ "attestation": "…", "veil_tag": "…", "manifest": "…", "pivot_number": …, "tenant_uuid": "…" }'} />
+              <button type="submit" disabled={proofState === "working" || !proof.trim()}>{proofState === "working" ? "Validating…" : "Submit final proof"}</button>
+              {proofFeedback && <p className={styles.proofFeedback}>{proofFeedback}</p>}
+            </form>}
+      </div>}
     </section>
   </main>;
 }

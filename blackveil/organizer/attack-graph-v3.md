@@ -117,7 +117,7 @@ the next controlled transition.
 - **Verify:** player terminal enumerates `/proc` + mounts + socket and reaches
   the provisioner; patched mode blocks the shortcut.
 
-### Stage 11 — False Root (privilege boundaries)
+### Stage 11 — The Privileged Reader (privilege boundaries)
 - **New component:** the provisioner accepts a bounded provisioning request; a
   controlled design mistake (trusting a client-supplied value that selects a
   privileged action *within the sandbox user namespace*) yields root **inside the

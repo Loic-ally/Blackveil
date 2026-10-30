@@ -222,28 +222,6 @@ def provisioner_probe(socket_epoch, request_json):
     return f"python3 -c \"import base64;exec(base64.b64decode('{enc}'))\""
 
 
-def validator_submit(bundle):
-    """Submit a final proof bundle to the isolated validator. Organizer-only: it
-    runs inside the validator container (the service has no host port and is on a
-    dedicated internal network), which is exactly how the organizer scores."""
-    prog = (
-        "import urllib.request,urllib.error\n"
-        f"body={json.dumps(json.dumps(bundle))}.encode()\n"
-        "req=urllib.request.Request('http://127.0.0.1:9000/validate',data=body,"
-        "headers={'Content-Type':'application/json'},method='POST')\n"
-        "try:\n"
-        " print(urllib.request.urlopen(req,timeout=5).read().decode())\n"
-        "except urllib.error.HTTPError as e:\n"
-        " print(e.read().decode())\n"
-    )
-    enc = base64.b64encode(prog.encode()).decode()
-    result = subprocess.run(
-        legacy.worker.COMPOSE + ["exec", "-T", "aether-validator", "python3", "-c",
-                                 f"import base64;exec(base64.b64decode('{enc}'))"],
-        cwd=ROOT, capture_output=True, text=True)
-    return json.loads(result.stdout)
-
-
 def boot_epoch(text):
     """First 8 hex of a boot_id string (the provisioner's handshake epoch)."""
     line = text.strip().splitlines()[-1].strip() if text.strip() else ""
@@ -516,7 +494,7 @@ def run(web=False):
                 # The provisioner runs in a private mount namespace: its mountinfo
                 # differs from the operator's (a Linux-internals confirming signal).
                 desc = json.loads(terminal.ok(provisioner_probe(epoch, json.dumps({"op": "describe", "epoch": epoch}))))
-                require(desc.get("ok") is True and desc.get("provision", {}).get("next") == "false-root",
+                require(desc.get("ok") is True and desc.get("provision", {}).get("next") == "privileged-reader",
                         f"provisioner handshake did not return the Stage 11 reference: {desc}")
                 wrong = json.loads(terminal.ok(provisioner_probe(epoch, json.dumps({"op": "describe", "epoch": "00000000"}))))
                 require(wrong.get("error") == "handshake",
@@ -715,23 +693,44 @@ def run(web=False):
             match = re.search(r'name="aether-migration-channel" content="([^"]+)"', home_text)
             require(match is not None, "website migration-channel clue not found on the public site")
             veil = match.group(1)
-            # Bring up the isolated organizer validator (own internal network, no host port).
-            subprocess.run(legacy.worker.COMPOSE + ["--profile", "validator", "up", "-d", "--wait",
-                           "--wait-timeout", "120", "aether-validator"],
-                           cwd=ROOT, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             bundle = {"attestation": incident_attestation, "veil_tag": veil,
                       "manifest": "deploy-4102", "pivot_number": 4102, "tenant_uuid": HARBOR}
-            # An incomplete proof is rejected with progressive feedback.
-            incomplete = validator_submit({k: v for k, v in bundle.items() if k != "attestation"})
-            require(incomplete.get("black_veil") is False and "attestation" in incomplete.get("missing", []),
-                    f"validator accepted an incomplete proof: {incomplete}")
-            # The complete full-chain proof mints the final flag.
-            final = validator_submit(bundle)
-            require(final.get("black_veil") is True and final.get("flag", "").startswith("BV{"),
-                    f"final proof rejected: {final}")
-            print("PASS: challenge stage 15 — the full-chain proof (incident attestation + "
-                  f"cross-tenant manifest + website veil tag) is accepted by the isolated "
-                  f"validator: {final['flag']}", flush=True)
+            endpoint = "/api/v2/lab/final-proof"
+            require(Client().request(endpoint, "POST", {"proof": bundle})[0] == 401,
+                    "anonymous final submission accepted")
+            for invalid in ({"proof": {}}, {"proof": bundle, "tenant_id": HARBOR},
+                            {"proof": dict(bundle, extra="unknown")},
+                            {"proof": dict(bundle, attestation="x" * 9000)}):
+                require(player.request(endpoint, "POST", invalid)[0] == 400,
+                        "invalid final submission schema accepted")
+            status, rejected = player.request(endpoint, "POST", {"proof": dict(bundle, attestation="wrong")})
+            require(status == 200 and rejected.get("status") == "incomplete" and "missing" not in rejected,
+                    "incorrect proof accepted or validation details disclosed")
+            status, final = player.request(endpoint, "POST", {"proof": bundle})
+            require(status == 200 and final.get("status") == "complete" and final.get("flag", "").startswith("BV{"),
+                    "player-facing final proof rejected")
+            require(player.request(endpoint, "POST", {"proof": bundle}) == (200, final),
+                    "repeated completion not idempotent")
+            require(player.request(endpoint) == (200, final), "completion not persisted")
+            # Organizer restarts services only; the same player session reads its completion.
+            subprocess.run(legacy.worker.COMPOSE + ["restart", "aether-api"], cwd=ROOT,
+                           check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            for attempt in range(30):
+                try:
+                    if player.request(endpoint) == (200, final):
+                        break
+                except Exception:
+                    pass
+                time.sleep(1)
+            else:
+                raise AssertionError("completion did not survive API restart")
+            for attempt in range(13):
+                status, _ = player.request(endpoint, "POST", {"proof": bundle})
+                if status == 429:
+                    break
+            require(status == 429, "final submission rate bound not enforced")
+            print("PASS: challenge stage 15 — player HTTPS submission, strict schema, generic rejection, "
+                  "idempotence, rate bound and persisted completion after API restart.", flush=True)
 
         # ---- Patched mode: the Stage 03 disclosure is closed ----
         legacy.switch("patched")

@@ -25,6 +25,7 @@ The Stage 13 manifest, whose `evidence` field points at
 
 Under `/var/lib/aether-migration/incident/` (operator-readable), seeded
 deterministically by `render-cloud-init.py`:
+- `deployment.jsonl` — dispatch IDs, service principal, retry reason and migration-map fallback; correlate dispatches with worker and API events.
 - `worker.jsonl` — worker archive records (UTC, actor by number), including a
   retry of the same job.
 - `agent-trace.log` — guest agent traces on a clock offset from UTC.
@@ -61,7 +62,7 @@ attributing the pivot.
 **Reproducible intended solution**
 
 1. Read the evidence. Align `hb-0` across worker/agent to get `offset`.
-2. Collapse the retry; find the agent trace with a foreign `resolved_no`.
+2. Correlate the deployment dispatch IDs with worker requests. Collapse the lease retry, then use the API actor UUID and migration map to identify the agent trace with a foreign `resolved_no`.
 3. Submit `{offset, pivot_job, pivot_number: 4102}` to `/v1/incident` → an
    incident attestation and `next: the-black-veil`.
 

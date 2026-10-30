@@ -6,7 +6,7 @@ tracked tree into a temporary directory, generates fresh local secrets there,
 and runs it as a separate Compose project (own containers, networks, volumes and
 host port). Every destructive command runs inside that copy only.
 
-Scenarios, each followed by the full player-path verifier (Stages 01-08) and an
+Scenarios, each followed by the full player-path verifier (Stages 01-15) and an
 identity-material assertion:
 
   fresh        first deployment from empty volumes
@@ -48,7 +48,7 @@ class Env:
         files = subprocess.run(["git", "ls-files", "-co", "--exclude-standard", "-z"], cwd=SOURCE,
                                check=True, capture_output=True, text=True).stdout.split("\0")
         for name in filter(None, files):
-            if "__pycache__" in name or not (SOURCE / name).is_file():
+            if "validation-runs/" in name or "__pycache__" in name or not (SOURCE / name).is_file():
                 continue
             target = self.root / name
             target.parent.mkdir(parents=True, exist_ok=True)
@@ -151,6 +151,7 @@ def main():
         print("== fresh deployment", flush=True)
         env.up()
         env.chain()
+        env.sh("./scripts/check-network.sh")
         marker = f"reset-marker-{uuid.uuid4().hex}@example.test"
         env.sh("python3", "-c", "import sys; sys.path.insert(0, 'scripts'); from smoke import Client; "
                f"assert Client().request('/api/auth/register', 'POST', {{'name': 'Reset Marker', "
@@ -172,7 +173,7 @@ def main():
             env.up()
         require(fresh["marker_user"] == "1", "marker user was not created")
         require(len(fresh["receipts"].split(",")) >= 3, f"seeded receipts missing: {fresh['receipts']}")
-        print("PASS: fresh deployment — Stages 01-08 solvable; identity material provisioned.", flush=True)
+        print("PASS: fresh deployment — Stages 01-15 solvable; identity material provisioned.", flush=True)
 
         print("== guest restart", flush=True)
         env.compose("restart", *GUESTS)
@@ -217,6 +218,7 @@ def main():
         env.chain()
         print("PASS: full reset — database receipts, users, guest keys and captures regenerated; "
               ".env secrets preserved; chain solvable.", flush=True)
+        env.sh("./scripts/check-network.sh")
         print("OK: reset/restart verification passed in a disposable environment.", flush=True)
     finally:
         if args.keep:

@@ -206,13 +206,25 @@ def main() -> None:
         {"ts": inc_base + 60, "actor_uuid": north_uuid, "action": "reporting.enrolled"},
         {"ts": inc_base + 290, "actor_uuid": north_uuid, "action": "operator.recovered"},
     ]) + "\n"
+    # Independent deployment ledger: a queued retry shares the original request
+    # id, while the later cross-tenant request has a new dispatch id. This lets
+    # investigators distinguish replay noise from the initiating authorization.
+    deployment_jsonl = "\n".join(json.dumps(row) for row in [
+        {"ts": inc_base + 110, "event": "dispatch", "id": "d-north", "job": inc_job,
+         "principal": "svc:aether-reporting", "requested_no": north_no},
+        {"ts": inc_base + 121, "event": "retry", "id": "d-north", "job": inc_job,
+         "reason": "worker lease expired"},
+        {"ts": inc_base + 295, "event": "dispatch", "id": "d-harbor", "job": inc_job,
+         "principal": "svc:aether-reporting", "requested_no": harbor_no,
+         "provenance": "migration-map fallback"},
+    ]) + "\n"
     incident_metadata = json.dumps({
         "map": {north_uuid: north_no, harbor_uuid: harbor_no}, "window": [inc_base, inc_base + 600],
     }, indent=2) + "\n"
     incident_notes = (
         "Incident evidence (migration window). The guest clock was not NTP-synced: "
         "align the agent trace to UTC using the heartbeat 'hb-0' present in both "
-        "worker.jsonl and agent-trace.log, then find the request whose resolved "
+        "worker.jsonl and agent-trace.log. Correlate deployment dispatch IDs and API actor history; then find the request whose resolved "
         "tenant number differs from the actor's.\n")
     public_key = args.public_key.read_text().strip()
     tenant_map = "".join(f"{uuid},{legacy}\n" for uuid, legacy in TENANTS)
@@ -268,6 +280,7 @@ def main() -> None:
     files.append(block("/var/lib/aether-migration/last-archive-request.json", sample + "\n", "0644"))
     # Stage 14 incident evidence set (operator-readable; referenced by the Stage 13
     # manifest). Realistic forensic complexity: cross-source clock offset + a retry.
+    files.append(block("/var/lib/aether-migration/incident/deployment.jsonl", deployment_jsonl, "0644"))
     files.append(block("/var/lib/aether-migration/incident/worker.jsonl", worker_jsonl, "0644"))
     files.append(block("/var/lib/aether-migration/incident/agent-trace.log", agent_trace, "0644"))
     files.append(block("/var/lib/aether-migration/incident/api-audit.jsonl", api_audit, "0644"))

@@ -24,9 +24,9 @@ interfaces; the live equivalent is `scripts/verify-chain.py`.
    namespace (confinement signal).
 4. Connect to the abstract socket and send
    `{"op":"describe","epoch":"<boot8>"}` → the describe reply with `next:
-   false-root`.
+   privileged-reader`.
 
-## Stage 11 — False Root
+## Stage 11 — The Privileged Reader
 1. `{"op":"provision","epoch":"<boot8>","arg":"default.tmpl"}` → the deputy renders
    a store template (confirms it reads as its own identity).
 2. `arg":"../provenance.blob"` → the deputy escapes the store and returns the

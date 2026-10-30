@@ -30,7 +30,7 @@ likely shortcuts (and why they fail) · typical wrong hypotheses · evidence qua
 - **Evidence quality:** deterministic per boot.
 - **Proof:** a successful `describe` handshake.
 
-## Stage 11 — False Root
+## Stage 11 — The Privileged Reader
 - **Domains:** privilege boundaries, path confinement, Linux ownership.
 - **Observations:** the `provision` op; the store path; the benign vs traversal
   behaviour; the denied guest-root read.

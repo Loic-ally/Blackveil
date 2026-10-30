@@ -51,7 +51,7 @@ altering Stages 01–08.
   mode requires a non-world-readable ticket, closing the shortcut. Verified by 5
   host `cargo test` vectors and live through the player terminal in
   `make chain-verify` (Stages 01–10, exit 0). Spec: `docs/stages/stage-10.md`.
-- **Stage 11 — False Root (privilege boundaries): implemented and
+- **Stage 11 — The Privileged Reader (privilege boundaries): implemented and
   live-verified.** The provisioner's `provision` op renders templates from a
   confined store (`root:aether-prov`); challenge mode joins the caller's `arg`
   without sanitization, so `../provenance.blob` escapes the store as the deputy
@@ -113,11 +113,11 @@ regressions and exits nonzero if the guest is unavailable.
 | 2. Application MVP | In progress | Auth, tenant-scoped business workflows, team administration, reports, audit and a read-only tenant settings view (`GET /api/v2/tenant`) implemented. Equipment editing/deletion absent. |
 | 3. First playable challenge | Stages 01–08 playable | Signup → tenant_admin → system_admin → Linux shell → agent identity confusion, challenge and patched, live-verified by `scripts/verify-chain.py`. |
 | 4. Linux integration | Progression complete | Debian QEMU guest, restricted operator, Rust agent, gated terminal and archive reporting implemented; guest access now reached via Stages 05–06 with no organizer action. |
-| 5. Advanced investigation | Player-reachable | Stage 08 agent mechanism is now reached through Stages 03–07 (reconstruction, enrollment, operator recovery, foothold, retained capture). Final evidence-correlation flow (Phase 6) still absent. |
-| 6. Final proof | Not implemented | No final evidence-correlation flow or isolated final validator found. |
-| 7. Full challenge validation | Partial | Player-equivalent chain verifier (Stages 01–08), organizer walkthrough (`docs/WALKTHROUGH.md`) and disposable reset/restart verifier (`make reset-verify`) exist. No blind playtest; reset verification is not in CI. |
-| 8. Security hardening | Partial | Network separation, runtime database roles, restricted guest, SSH host pinning, patched-mode anti-replay and lease fencing exist; audit in `organizer/security-isolation-audit.md`. Image digest pinning and vulnerability scanning absent. |
-| 9. Difficulty tuning | Not implemented | No completed blind playtest or published scoring rubric found. |
+| 5. Advanced investigation | Complete | All 15 stages implemented; the final evidence-correlation (Stages 09–15) is player-reachable through the Linux guest and AETHER APIs. |
+| 6. Final proof | Complete | Player-facing `POST /api/v2/lab/final-proof` submits through the HTTPS gateway to the isolated `aether-validator` (token-authenticated, internal network, no host port); persistent completion, idempotent, rate-limited. Migration `012_final_proof.sql`, UI in `/lab`. `verify-chain.py` covers auth, schema, rejection, rate bound, idempotence and restart. |
+| 7. Full challenge validation | Partial | Player-equivalent chain verifier (`scripts/verify-chain.py`) covers Stages 01–15. Disposable reset/restart verifier (`make reset-verify`) updated to exercise the full chain. No blind playtest; reset verification not in CI. |
+| 8. Security hardening | Partial | Network separation, runtime database roles, restricted guest, SSH host pinning, patched-mode anti-replay and lease fencing exist; validator bearer-token auth added; audit in `organizer/security-isolation-audit.md`. Image digest pinning and vulnerability scanning absent. |
+| 9. Difficulty tuning | Partial | Stage 14 depth increased (added `deployment.jsonl` dispatch ledger; solution now requires four-source correlation). Stage 11 renamed "The Privileged Reader" for accuracy. No blind playtest or scoring rubric. |
 
 ## Implemented application
 

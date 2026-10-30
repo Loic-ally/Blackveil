@@ -68,7 +68,7 @@ world-readable, so the confinement looks stronger than it is.
 4. Reverse the binary for the request shape; connect to the abstract socket and
    send `{"op":"describe","epoch":"<boot8>"}`.
 5. Receive the describe reply, including the Stage 11 reference (`next:
-   false-root`).
+   privileged-reader`).
 
 **Patched implementation**
 

@@ -7,7 +7,7 @@ project=$(sed -n 's/^BLACKVEIL_PROJECT=//p' .env); project=${project:-blackveil}
 port=$(sed -n 's/^BLACKVEIL_HTTPS_PORT=//p' .env); port=${port:-443}
 $compose config --quiet
 
-for service in aether-web aether-api aether-auth aether-migrate aether-legacy aether-worker aether-telemetry aether-db aether-cache aether-bus aether-linux-vm aether-linux-vm-patched; do
+for service in aether-web aether-api aether-auth aether-migrate aether-legacy aether-worker aether-telemetry aether-db aether-cache aether-bus aether-validator aether-linux-vm aether-linux-vm-patched; do
   id=$($compose ps -q "$service")
   [ -n "$id" ] || continue
   ports=$(docker inspect --format '{{json .HostConfig.PortBindings}}' "$id")
@@ -27,7 +27,7 @@ PY
 gateway_networks=$(docker inspect --format '{{json .NetworkSettings.Networks}}' "$gateway")
 case "$gateway_networks" in *"${project}_data_internal"*) echo 'FAIL: gateway is attached to the data network'; exit 1;; esac
 case "$gateway_networks" in *"${project}_lab_internal"*) echo 'FAIL: gateway is attached to the Linux lab network'; exit 1;; esac
-for service in aether-web aether-api aether-auth aether-migrate aether-legacy aether-worker aether-telemetry aether-db aether-cache aether-bus aether-linux-vm aether-linux-vm-patched; do
+for service in aether-web aether-api aether-auth aether-migrate aether-legacy aether-worker aether-telemetry aether-db aether-cache aether-bus aether-validator aether-linux-vm aether-linux-vm-patched; do
   id=$($compose ps -q "$service")
   [ -n "$id" ] || continue
   networks=$(docker inspect --format '{{json .NetworkSettings.Networks}}' "$id")
@@ -55,5 +55,6 @@ PY
 docker network inspect "${project}_app_internal" --format '{{.Internal}}' | grep -qx true || { echo 'FAIL: app network is not internal'; exit 1; }
 docker network inspect "${project}_data_internal" --format '{{.Internal}}' | grep -qx true || { echo 'FAIL: data network is not internal'; exit 1; }
 docker network inspect "${project}_lab_internal" --format '{{.Internal}}' | grep -qx true || { echo 'FAIL: lab network is not internal'; exit 1; }
+docker network inspect "${project}_validator_internal" --format '{{.Internal}}' | grep -qx true || { echo 'FAIL: validator network is not internal'; exit 1; }
 $compose exec -T aether-gateway wget -qO- http://aether-api:8080/healthz >/dev/null || { echo 'FAIL: gateway cannot reach the API health check'; exit 1; }
 echo 'PASS: only the gateway is host-published; VM ports are private; application and lab networks are isolated.'
