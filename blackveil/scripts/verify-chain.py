@@ -11,7 +11,7 @@ Two explicit scopes (Requirement 3):
   --web   Application-only: Stages 01-05 plus the patched-mode regressions.
           The Linux guest is NOT required. (`make web-chain-verify`)
 
-  (full)  Default: Stages 01-08. The Linux guest and its patched fixture are
+  (full)  Default: Stages 01-09. The Linux guest and its patched fixture are
           MANDATORY. A missing or unreachable guest is a hard failure that
           names the stages not executed and exits nonzero — it never prints a
           full-chain success message. (`make chain-verify`)
@@ -19,6 +19,7 @@ Two explicit scopes (Requirement 3):
 Run against a running stack: `make up` first (and `make vm-up` for the full
 scope).
 """
+import base64
 import hashlib
 import importlib.util
 import json
@@ -166,6 +167,33 @@ class Terminal:
 
 AGENT = "http://127.0.0.1:8080"
 CAPTURE = "/var/lib/aether-migration/last-archive-request.json"
+INDEXER_PORT = 9090
+INDEXER_KEY_PATH = "/etc/aether-indexer/transport.key"
+HARBOR = "9a8b7c6d-5e4f-4321-8abc-def012345678"
+
+
+def indexer_probe(tenant_uuid, marker):
+    """A single `python3 -c` command that sends one legacy-envelope/0 record to
+    the in-guest indexer (127.0.0.1:9090) and prints its raw JSON reply. `marker`
+    is a Python byte expression for the trailing origin-marker byte. The program
+    is base64-wrapped so it survives the WebSocket terminal and organizer SSH
+    without any quoting hazard. This is the record a player crafts after reversing
+    the binary; the verifier does not read any organizer secret to build it."""
+    prog = (
+        "import socket\n"
+        f"p=b'{tenant_uuid}'+bytes([{marker}])\n"
+        "r=b'AEI\\x00'+bytes([0,1])+len(p).to_bytes(2,'big')+p\n"
+        f"s=socket.create_connection(('127.0.0.1',{INDEXER_PORT}),timeout=5)\n"
+        "s.sendall(r)\n"
+        "d=b''\n"
+        "while True:\n"
+        " c=s.recv(4096)\n"
+        " if not c: break\n"
+        " d+=c\n"
+        "print(d.decode('utf-8','replace'))\n"
+    )
+    enc = base64.b64encode(prog.encode()).decode()
+    return f"python3 -c \"import base64;exec(base64.b64decode('{enc}'))\""
 
 
 def reach_tenant_admin(player, tenant):
@@ -377,10 +405,31 @@ def run(web=False):
                 require(confused.get("resolved_legacy_tenant_no") == 4102
                         and "harbor" in json.dumps(confused).lower(),
                         f"number substitution did not cross tenants: {confused}")
+                print("PASS: challenge stage 08 — substituting only legacy_tenant_no on a valid "
+                      "worker signature returns a foreign bounded archive (identity confusion).", flush=True)
+
+                # ---- Stage 09: the forgotten binary (legacy indexer compat bypass) ----
+                # Containment: the indexer transport key is not operator-readable,
+                # so the player cannot forge a modern signed record.
+                status, out = terminal.run(f"cat {INDEXER_KEY_PATH}")
+                require(status != 0 and "denied" in out.lower(),
+                        f"operator could read the indexer transport key: {out!r}")
+                # The crafted legacy-envelope/0 record with the trusted-transport
+                # marker resolves a descriptor with no key (the Stage 09 defect).
+                bypass = json.loads(terminal.ok(indexer_probe(NORTH, "0xA7")))
+                require(bypass.get("resolved_tenant_uuid") == NORTH
+                        and bypass.get("provisioner", {}).get("service") == "aether-provisioner",
+                        f"legacy marker did not resolve a provisioning descriptor: {bypass}")
+                # Without the marker the same record is refused: it is the marker
+                # bypass, not an open endpoint.
+                nomark = json.loads(terminal.ok(indexer_probe(NORTH, "0x00")))
+                require(nomark.get("error") == "origin marker",
+                        f"indexer resolved a record without the trusted marker: {nomark}")
             finally:
                 terminal.close()
-            print("PASS: challenge stage 08 — substituting only legacy_tenant_no on a valid "
-                  "worker signature returns a foreign bounded archive (identity confusion).", flush=True)
+            print("PASS: challenge stage 09 — reversing the legacy indexer, a crafted "
+                  "legacy-envelope/0 record carrying the trusted-transport marker resolves a "
+                  "provisioning descriptor with no signing key (compat-shim bypass).", flush=True)
 
             # Patched VM regression (organizer independent assertion — no player
             # terminal reaches this fixture): the patched agent signs the number and the
@@ -399,6 +448,15 @@ def run(web=False):
                     f"patched agent accepted a substituted number: {refused}")
             print("PASS: patched stage 08 — the patched agent refuses the number substitution "
                   "(signature covers the number and timestamp).", flush=True)
+
+            # Patched Stage 09 (organizer independent assertion against the patched
+            # guest): the patched indexer decommissions the legacy transport, so the
+            # crafted legacy-envelope/0 record is refused outright.
+            refused9 = guest("aether-linux-vm-patched", indexer_probe(NORTH, "0xA7"))
+            require("decommissioned" in refused9,
+                    f"patched indexer served a legacy-transport record: {refused9!r}")
+            print("PASS: patched stage 09 — the patched indexer decommissions the legacy "
+                  "transport; the crafted record is refused.", flush=True)
 
         # ---- Patched mode: the Stage 03 disclosure is closed ----
         legacy.switch("patched")
@@ -433,8 +491,8 @@ def run(web=False):
             print("OK: application-only chain verified — Stages 01-05 (challenge) and the "
                   "patched 03/04/05 regressions. Linux Stages 06-08 not in scope.", flush=True)
         else:
-            print("OK: full chain verified — Stages 01-08 (challenge) through the real player "
-                  "interfaces, plus the patched 03/04/05/08 regressions.", flush=True)
+            print("OK: full chain verified — Stages 01-09 (challenge) through the real player "
+                  "interfaces, plus the patched 03/04/05/08/09 regressions.", flush=True)
     finally:
         try:
             for profile in profiles:

@@ -24,15 +24,25 @@ as commands typed into the player's own WebSocket terminal session.
 
 Open items: `organizer/remaining-risks.md`.
 
-### Advanced extension (Stages 09–15) — Phase A only
+### Advanced extension (Stages 09–15) — in progress
 
-Design-stage. The pre-implementation audit
+Design and Phase A complete: the pre-implementation audit
 (`organizer/advanced-extension-assessment.md`) and the full 09–15 dependency
-graph / architecture (`organizer/attack-graph-v3.md`) are complete and grounded
-in the current source. **No Stage 09–15 code is implemented yet**; the stages
-below are a design, not a verified build. They will be built depth-first
-(Phase B: 09–10, C: 11, D: 12–13, E: 14–15), each committed only when its tests
-run green, without altering Stages 01–08.
+graph / architecture (`organizer/attack-graph-v3.md`), grounded in the source.
+Built depth-first; each stage committed only when its tests run green, without
+altering Stages 01–08.
+
+- **Stage 09 — The Forgotten Binary (reverse engineering): implemented and
+  live-verified.** New `aether-indexer` native service (`vm/indexer/`) with a
+  custom `legacy-envelope/0` binary TLV protocol, provisioned into the guest by
+  cloud-init (confined `aether-indexer` account, loopback-only `:9090`,
+  root-owned transport key the operator cannot read, world-readable binary for
+  RE). Challenge mode's legacy compat shim trusts a client-supplied origin
+  marker and skips the HMAC; patched mode decommissions the legacy transport.
+  Verified by 7 host `cargo test` vectors and live through the player's own
+  WebSocket terminal as part of `make chain-verify` (Stages 01–09, exit 0).
+  Spec: `docs/stages/stage-09.md`.
+- **Stages 10–15:** designed in `attack-graph-v3.md`; not yet implemented.
 
 ## Milestones
 

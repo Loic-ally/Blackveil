@@ -100,9 +100,11 @@ are served, so the crafted legacy record no longer resolves.
 
 `legacy_transport_rejected_when_patched` (legacy record refused), and
 `modern_signed_query_resolves` asserts the modern path is identical under the
-patch. Guest-level player-terminal verification is added to
-`scripts/verify-chain.py` when the indexer is wired into the guest (Phase B
-integration; tracked in `PROGRESS.md`).
+patch. **Live:** `scripts/verify-chain.py` now crafts the bypass record inside
+the player's own WebSocket terminal against the challenge guest (resolves the
+provisioning descriptor; a record without the marker is refused; the transport
+key is not operator-readable) and asserts the patched guest refuses the legacy
+record — part of the full `make chain-verify` run (Stages 01–09, exit 0).
 
 **Unintended-path analysis**
 

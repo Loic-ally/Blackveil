@@ -52,6 +52,44 @@ ReadOnlyPaths=/var/lib/aether-agent
 WantedBy=multi-user.target
 """
 
+# Stage 09 (BV-09-FORGOTTEN-BINARY): the legacy record indexer. A separate,
+# confined service account; binds guest loopback only; its transport key is
+# root/aether-indexer, unreadable by operator. The binary itself is world-
+# readable for reverse engineering (0755). AETHER_AGENT_MODE selects the
+# challenge compat-shim defect vs the patched decommission.
+UNIT_INDEXER = """[Unit]
+Description=AETHER legacy record indexer (legacy-envelope/0 compatibility)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=aether-indexer
+Group=aether-indexer
+Environment=AETHER_AGENT_MODE={mode}
+ExecStart=/usr/local/sbin/aether-indexer
+Restart=on-failure
+RestartSec=2
+NoNewPrivileges=yes
+PrivateDevices=yes
+PrivateTmp=yes
+ProtectHome=yes
+ProtectSystem=strict
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictAddressFamilies=AF_INET AF_INET6
+RestrictNamespaces=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+ReadOnlyPaths=/etc/aether-indexer
+
+[Install]
+WantedBy=multi-user.target
+"""
+
 
 def block(path: str, content: str, mode: str, owner: str = "root:root") -> str:
     lines = [
@@ -66,6 +104,7 @@ def block(path: str, content: str, mode: str, owner: str = "root:root") -> str:
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--agent", required=True, type=Path)
+    parser.add_argument("--indexer", required=True, type=Path)
     parser.add_argument("--public-key", required=True, type=Path)
     parser.add_argument("--key", required=True)
     parser.add_argument("--mode", choices=("challenge", "patched"), required=True)
@@ -75,6 +114,13 @@ def main() -> None:
         raise SystemExit("agent key must be at least 32 bytes in hexadecimal")
 
     agent = base64.b64encode(args.agent.read_bytes()).decode("ascii")
+    indexer = base64.b64encode(args.indexer.read_bytes()).decode("ascii")
+    # Distinct transport key, derived from the agent key so no new .env secret is
+    # needed. Domain-separated, so it never equals the agent HMAC key. Only the
+    # indexer's modern signed path uses it; the operator cannot read it, and the
+    # Stage 09 legacy bypass needs no key at all.
+    indexer_key = hmac.new(bytes.fromhex(args.key), b"aether-indexer-transport/v0",
+                           hashlib.sha256).hexdigest()
     public_key = args.public_key.read_text().strip()
     tenant_map = "".join(f"{uuid},{legacy}\n" for uuid, legacy in TENANTS)
     agent_env = f"AETHER_AGENT_MODE={args.mode}\n"
@@ -86,6 +132,11 @@ def main() -> None:
         block("/etc/aether-agent/operator.pub", public_key + "\n", "0600"),
         block("/etc/systemd/system/aether-agent.service", UNIT, "0644"),
         block("/etc/ssh/sshd_config.d/80-blackveil.conf", "PasswordAuthentication no\nPermitRootLogin no\nAllowUsers operator\n", "0644"),
+        # Stage 09: the indexer binary is world-readable for RE (0755); its
+        # transport key is provisioned root/aether-indexer below.
+        "  - path: /usr/local/sbin/aether-indexer\n    owner: root:root\n    permissions: '0755'\n    encoding: b64\n    content: " + indexer,
+        block("/etc/aether-indexer/transport.key", indexer_key + "\n", "0600"),
+        block("/etc/systemd/system/aether-indexer.service", UNIT_INDEXER.format(mode=args.mode), "0644"),
     ]
     for legacy, content in ARCHIVES.items():
         files.append(block(f"/var/lib/aether-agent/archive-{legacy}.json", content + "\n", "0600"))
@@ -115,7 +166,10 @@ def main() -> None:
     files.append(block("/var/lib/aether-migration/README",
         "Retained capture of the last reporting-archive request submitted to "
         "aether-agent during migration validation. The agent at 127.0.0.1:8080 "
-        "serves POST /v1/legacy/archive; GET /v1/build reports the protocol.\n", "0644"))
+        "serves POST /v1/legacy/archive; GET /v1/build reports the protocol.\n"
+        "\n"
+        "A legacy record indexer (legacy-envelope/0) remains on 127.0.0.1:9090 "
+        "for backward compatibility with pre-migration binary records.\n", "0644"))
 
     cloud_config = "\n".join([
         "#cloud-config",
@@ -138,6 +192,12 @@ def main() -> None:
         "  - [/bin/chmod, '0440', /etc/aether-agent/agent.env, /etc/aether-agent/worker.key]",
         "  - [/bin/chmod, '0640', /etc/aether-agent/tenant-map.csv, /var/lib/aether-agent/archive-4101.json, /var/lib/aether-agent/archive-4102.json]",
         "  - [/bin/rm, -f, /etc/aether-agent/operator.pub]",
+        # Stage 09 indexer: confined service account; transport key is
+        # root:aether-indexer 0640 (operator cannot read it).
+        "  - [/usr/sbin/useradd, --system, --user-group, --home-dir, /nonexistent, --shell, /usr/sbin/nologin, --no-create-home, aether-indexer]",
+        "  - [/bin/chown, 'root:aether-indexer', /etc/aether-indexer/transport.key]",
+        "  - [/bin/chmod, '0640', /etc/aether-indexer/transport.key]",
+        "  - [systemctl, enable, --now, aether-indexer.service]",
         "  - [systemctl, enable, --now, aether-agent.service]",
         "  - [systemctl, restart, ssh.service]",
         "  - [/bin/sh, -c, 'if id debian >/dev/null 2>&1; then usermod -L debian; gpasswd -d debian sudo >/dev/null 2>&1 || true; userdel --remove debian || true; fi']",
