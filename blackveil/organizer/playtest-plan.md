@@ -22,8 +22,8 @@ per stage to calibrate difficulty.
 ## Environment
 - A fresh deployment per tester from a clean `.env` (`make setup && make up && make
   vm-up`), so seeds/flags differ per instance and nothing is shared.
-- Challenge mode only. The validator (`--profile validator`) is organizer-side;
-  testers submit proofs through the organizer.
+- Challenge mode only. Testers submit the final proof through the AETHER website
+  (`/lab`); no organizer access or Docker commands required for Stage 15.
 - Destructive actions are contained: testers get their own disposable stack.
 
 ## Protocol

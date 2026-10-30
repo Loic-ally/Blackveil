@@ -507,7 +507,7 @@ def run(web=False):
                       "/proc/net/unix reaches the confined provisioner over its abstract socket; "
                       "a wrong epoch is refused and the ticket stays unreadable.", flush=True)
 
-                # ---- Stage 11: false root (confined provisioning deputy) ----
+                # ---- Stage 11: the privileged reader (confined provisioning deputy) ----
                 def provision(arg):
                     return json.loads(terminal.ok(provisioner_probe(
                         epoch, json.dumps({"op": "provision", "epoch": epoch, "arg": arg}))))
@@ -534,7 +534,7 @@ def run(web=False):
                 require(status != 0 and "denied" in out.lower(),
                         f"operator read the confined store directly: {out!r}")
                 print("PASS: challenge stage 11 — the provisioning deputy escapes its store to the "
-                      "confined provenance blob (false root), yet cannot read guest-root secrets: "
+                      "confined provenance blob (privileged reader), yet cannot read guest-root secrets: "
                       "the elevation is bounded to the aether-prov service identity.", flush=True)
 
                 # ---- Stage 12: the integrity paradox (provenance verification) ----

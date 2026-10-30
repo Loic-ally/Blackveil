@@ -55,12 +55,15 @@ chain to obtain).
 All derived values key off `AETHER_AGENT_KEY`, so a fresh `.env` (via `make
 setup`) yields a new flag and new seeds; `make reset` / `make vm-reset` regenerate
 the guest-side material. The validator recomputes from the same key, so the chain
-stays consistent after reprovisioning. `scripts/reset.sh` tears down the
-`validator` profile too.
+stays consistent after reprovisioning.
 
 ## Verification
 
-`scripts/verify-chain.py` (full scope) performs the real submission: it reads the
-site clue, brings up the validator (`--profile validator --wait`), submits an
-incomplete proof (expects `missing`), then the full proof (expects `BV{…}`). This
-runs as the final step of `make chain-verify` (Stages 01–15).
+`scripts/verify-chain.py` (full scope) performs the real submission through the
+player-facing HTTPS API (`POST /api/v2/lab/final-proof`): it reads the site clue,
+checks that an unauthenticated request is rejected (401), verifies that schema
+violations and an incorrect proof are rejected generically, then submits the full
+proof (expects `{status: complete, flag: BV{…}}`), confirms idempotence,
+persistence across an API restart, and the rate limit. The validator is always up
+(`aether-validator` service, no `--profile` flag required) and sits on the internal
+`validator` network; the API is the only service that can reach it.
