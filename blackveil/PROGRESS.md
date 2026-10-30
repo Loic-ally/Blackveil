@@ -24,6 +24,16 @@ as commands typed into the player's own WebSocket terminal session.
 
 Open items: `organizer/remaining-risks.md`.
 
+### Advanced extension (Stages 09–15) — Phase A only
+
+Design-stage. The pre-implementation audit
+(`organizer/advanced-extension-assessment.md`) and the full 09–15 dependency
+graph / architecture (`organizer/attack-graph-v3.md`) are complete and grounded
+in the current source. **No Stage 09–15 code is implemented yet**; the stages
+below are a design, not a verified build. They will be built depth-first
+(Phase B: 09–10, C: 11, D: 12–13, E: 14–15), each committed only when its tests
+run green, without altering Stages 01–08.
+
 ## Milestones
 
 | Phase | State | Actual implementation / remaining work |
