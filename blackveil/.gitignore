@@ -5,3 +5,4 @@ web/node_modules/
 web/.next/
 vm/agent/target/
 vm/indexer/target/
+vm/provisioner/target/
