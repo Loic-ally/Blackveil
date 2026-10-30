@@ -165,6 +165,24 @@ def main() -> None:
     # only, never world-readable. Unused in challenge mode.
     provisioner_ticket = hmac.new(bytes.fromhex(args.key), b"aether-provisioner-ticket/v0",
                                   hashlib.sha256).hexdigest()
+    # Stage 11-12 provenance blob: the confined artifact the provision deputy
+    # yields. It is signed over a canonical TLV form; the JSON fields are a second
+    # representation (Stage 12 investigates the gap between them).
+    prov_key = hmac.new(bytes.fromhex(args.key), b"aether-provenance/v0", hashlib.sha256).digest()
+    prov_service, (prov_uuid, prov_no), prov_issued = "svc:aether-reporting", TENANTS[0], int(time.time())
+
+    def _tlv(tag, value):
+        raw = str(value).encode()
+        return bytes([tag]) + len(raw).to_bytes(2, "big") + raw
+
+    prov_tlv = (b"AEP\x00" + _tlv(1, prov_service) + _tlv(2, prov_uuid)
+                + _tlv(3, prov_no) + _tlv(4, prov_issued))
+    prov_sig = hmac.new(prov_key, prov_tlv, hashlib.sha256).hexdigest()
+    provenance_blob = json.dumps({
+        "format": "provenance/1", "service": prov_service, "tenant_uuid": prov_uuid,
+        "legacy_tenant_no": prov_no, "issued_at": prov_issued,
+        "tlv": base64.b64encode(prov_tlv).decode(), "sig": prov_sig,
+    }, indent=2)
     public_key = args.public_key.read_text().strip()
     tenant_map = "".join(f"{uuid},{legacy}\n" for uuid, legacy in TENANTS)
     agent_env = f"AETHER_AGENT_MODE={args.mode}\n"
@@ -186,6 +204,11 @@ def main() -> None:
         "  - path: /usr/local/sbin/aether-provisioner\n    owner: root:root\n    permissions: '0755'\n    encoding: b64\n    content: " + provisioner,
         block("/etc/aether-provisioner/ticket", provisioner_ticket + "\n", "0600"),
         block("/etc/systemd/system/aether-provisioner.service", UNIT_PROVISIONER.format(mode=args.mode), "0644"),
+        # Stage 11 confined store (chowned root:aether-prov below): a benign
+        # template and the provenance blob the deputy renders.
+        block("/var/lib/aether-provisioner/templates/default.tmpl",
+              "AETHER provisioning template v1\nregion={{region}}\nstore=confined\n", "0640"),
+        block("/var/lib/aether-provisioner/provenance.blob", provenance_blob + "\n", "0640"),
     ]
     for legacy, content in ARCHIVES.items():
         files.append(block(f"/var/lib/aether-agent/archive-{legacy}.json", content + "\n", "0600"))
@@ -251,6 +274,11 @@ def main() -> None:
         "  - [/usr/sbin/useradd, --system, --user-group, --home-dir, /nonexistent, --shell, /usr/sbin/nologin, --no-create-home, aether-prov]",
         "  - [/bin/chown, 'root:aether-prov', /etc/aether-provisioner/ticket]",
         "  - [/bin/chmod, '0640', /etc/aether-provisioner/ticket]",
+        # Confined store: dirs 0750 (operator cannot list), files 0640, all
+        # root:aether-prov — only the deputy reads them.
+        "  - [/bin/chown, -R, 'root:aether-prov', /var/lib/aether-provisioner]",
+        "  - [/bin/chmod, '0750', /var/lib/aether-provisioner, /var/lib/aether-provisioner/templates]",
+        "  - [/bin/chmod, '0640', /var/lib/aether-provisioner/templates/default.tmpl, /var/lib/aether-provisioner/provenance.blob]",
         "  - [systemctl, enable, --now, aether-provisioner.service]",
         "  - [systemctl, enable, --now, aether-agent.service]",
         "  - [systemctl, restart, ssh.service]",

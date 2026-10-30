@@ -21,9 +21,13 @@ use serde::Deserialize;
 use serde_json::{json, Value};
 use std::io::{BufRead, BufReader, Write};
 use std::os::unix::net::{UnixListener, UnixStream};
+use std::path::{Path, PathBuf};
 use std::thread;
 
 const SOCKET_PREFIX: &str = "aether-prov";
+// Confined provisioning store, owned root:aether-prov (dir 0750, files 0640): the
+// operator cannot read it directly, only through the provision deputy below.
+const TEMPLATE_DIR: &str = "/var/lib/aether-provisioner/templates";
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 enum Mode {
@@ -40,36 +44,75 @@ struct Request {
     arg: String,
 }
 
-/// Pure request handler (no I/O), covered by test vectors.
-///
-/// `epoch` is the world-readable boot handshake token (challenge gate).
-/// `ticket` is the non-world-readable credential (patched gate).
-fn handle_request(mode: Mode, epoch: &str, credential: &str, req: &Request) -> Value {
-    let authorized = match mode {
+/// The handshake gate (pure). `epoch` is the world-readable boot token (challenge
+/// gate); `credential` is the non-world-readable ticket (patched gate).
+fn authorized(mode: Mode, epoch: &str, credential: &str, req: &Request) -> bool {
+    match mode {
         // Challenge: the boot epoch is a world-readable handshake. Combined with
         // finding the abstract socket, it is enough — the Stage 10 correlation.
         Mode::Challenge => !epoch.is_empty() && req.epoch == epoch,
         // Patched: a ticket the operator cannot read from world-readable state.
-        // The epoch no longer authorizes anything.
         Mode::Patched => !credential.is_empty() && req.ticket == credential,
-    };
-    if !authorized {
+    }
+}
+
+fn describe() -> Value {
+    json!({
+        "ok": true,
+        "service": "aether-provisioner",
+        "stage": 10,
+        "ops": ["describe", "provision"],
+        "provision": {
+            "note": "submit op=provision with arg=<template>; the provisioning \
+                     deputy renders it from the confined store as its own identity",
+            "next": "false-root"
+        }
+    })
+}
+
+/// Resolve a provisioning template path (pure, covered by test vectors).
+///
+/// Stage 11 defect (challenge): `arg` is joined to the store directory with no
+/// sanitization, so `../provenance.blob` (or any aether-prov-readable path)
+/// escapes the store. The deputy runs as `aether-prov`, so the escape is bounded
+/// to that service identity — it is NOT guest root. Patched mode rejects any
+/// separator or parent reference, confining rendering to the store.
+fn resolve_template(mode: Mode, base: &Path, arg: &str) -> Result<PathBuf, &'static str> {
+    if mode == Mode::Patched {
+        if arg.is_empty() || arg.contains('/') || arg.contains("..") {
+            return Err("invalid template");
+        }
+    }
+    if arg.is_empty() {
+        return Err("invalid template");
+    }
+    Ok(base.join(arg))
+}
+
+/// Render a provision request. I/O is injected as `read` so the control flow is
+/// unit-testable without a filesystem.
+fn provision<R>(mode: Mode, base: &Path, arg: &str, read: R) -> Value
+where
+    R: Fn(&Path) -> std::io::Result<String>,
+{
+    match resolve_template(mode, base, arg) {
+        Err(reason) => json!({"error": reason}),
+        Ok(path) => match read(&path) {
+            Ok(body) => json!({"ok": true, "op": "provision", "template": arg, "rendered": body.trim_end()}),
+            // Report only the error kind, never the resolved path, so containment
+            // failures (e.g. a root-owned secret) read as a clean denial.
+            Err(error) => json!({"error": format!("render failed: {:?}", error.kind())}),
+        },
+    }
+}
+
+fn handle_request(mode: Mode, epoch: &str, credential: &str, req: &Request) -> Value {
+    if !authorized(mode, epoch, credential, req) {
         return json!({"error": "handshake"});
     }
     match req.op.as_str() {
-        "describe" => json!({
-            "ok": true,
-            "service": "aether-provisioner",
-            "stage": 10,
-            "ops": ["describe", "provision"],
-            "provision": {
-                "note": "submit op=provision with a provisioning action; \
-                         the legacy path maps the caller by namespace credential",
-                "next": "false-root"
-            }
-        }),
-        // Stage 11 lands the controlled privilege mistake here.
-        "provision" => json!({"error": "provisioning not authorized (stage 11)"}),
+        "describe" => describe(),
+        "provision" => provision(mode, Path::new(TEMPLATE_DIR), &req.arg, |path| std::fs::read_to_string(path)),
         _ => json!({"error": "unknown op"}),
     }
 }
@@ -176,14 +219,44 @@ mod tests {
     }
 
     #[test]
-    fn provision_refused_until_stage_11() {
-        let r = handle_request(Mode::Challenge, "a1b2c3d4", "", &req("provision", "a1b2c3d4", ""));
-        assert_eq!(r["error"], json!("provisioning not authorized (stage 11)"));
-    }
-
-    #[test]
     fn unknown_op_rejected() {
         let r = handle_request(Mode::Challenge, "a1b2c3d4", "", &req("sweep", "a1b2c3d4", ""));
         assert_eq!(r["error"], json!("unknown op"));
+    }
+
+    #[test]
+    fn challenge_template_escapes_store() {
+        // Stage 11 defect: traversal escapes the store (bounded to aether-prov).
+        let base = Path::new("/var/lib/aether-provisioner/templates");
+        let p = resolve_template(Mode::Challenge, base, "../provenance.blob").unwrap();
+        assert_eq!(p, Path::new("/var/lib/aether-provisioner/templates/../provenance.blob"));
+    }
+
+    #[test]
+    fn patched_template_confined_to_store() {
+        let base = Path::new("/var/lib/aether-provisioner/templates");
+        assert_eq!(resolve_template(Mode::Patched, base, "../provenance.blob"), Err("invalid template"));
+        assert_eq!(resolve_template(Mode::Patched, base, "a/b"), Err("invalid template"));
+        assert_eq!(resolve_template(Mode::Patched, base, ""), Err("invalid template"));
+        assert_eq!(resolve_template(Mode::Patched, base, "default.tmpl").unwrap(),
+                   Path::new("/var/lib/aether-provisioner/templates/default.tmpl"));
+    }
+
+    #[test]
+    fn provision_renders_and_reports_bounded_denial() {
+        let base = Path::new("/store");
+        // Challenge traversal reads what the deputy (aether-prov) can read.
+        let ok = provision(Mode::Challenge, base, "../provenance.blob",
+                           |p| { assert!(p.ends_with("../provenance.blob")); Ok("BLOB".into()) });
+        assert_eq!(ok["ok"], json!(true));
+        assert_eq!(ok["rendered"], json!("BLOB"));
+        // A guest-root secret the deputy cannot read is a clean denial, no path leak.
+        let denied = provision(Mode::Challenge, base, "../../../etc/aether-agent/worker.key",
+                               |_| Err(std::io::Error::from(std::io::ErrorKind::PermissionDenied)));
+        assert!(denied["error"].as_str().unwrap().starts_with("render failed"));
+        assert!(!denied.to_string().contains("worker.key"));
+        // Patched refuses the traversal before any read.
+        let patched = provision(Mode::Patched, base, "../provenance.blob", |_| Ok("BLOB".into()));
+        assert_eq!(patched["error"], json!("invalid template"));
     }
 }

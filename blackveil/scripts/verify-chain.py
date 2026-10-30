@@ -11,7 +11,7 @@ Two explicit scopes (Requirement 3):
   --web   Application-only: Stages 01-05 plus the patched-mode regressions.
           The Linux guest is NOT required. (`make web-chain-verify`)
 
-  (full)  Default: Stages 01-10. The Linux guest and its patched fixture are
+  (full)  Default: Stages 01-11. The Linux guest and its patched fixture are
           MANDATORY. A missing or unreachable guest is a hard failure that
           names the stages not executed and exits nonzero — it never prints a
           full-chain success message. (`make chain-verify`)
@@ -21,6 +21,7 @@ scope).
 """
 import base64
 import hashlib
+import hmac
 import importlib.util
 import json
 import os
@@ -483,11 +484,41 @@ def run(web=False):
                 status, out = terminal.run("cat /etc/aether-provisioner/ticket")
                 require(status != 0 and "denied" in out.lower(),
                         f"operator could read the provisioner ticket: {out!r}")
+                print("PASS: challenge stage 10 — correlating the descriptor, the boot epoch and "
+                      "/proc/net/unix reaches the confined provisioner over its abstract socket; "
+                      "a wrong epoch is refused and the ticket stays unreadable.", flush=True)
+
+                # ---- Stage 11: false root (confined provisioning deputy) ----
+                def provision(arg):
+                    return json.loads(terminal.ok(provisioner_probe(
+                        epoch, json.dumps({"op": "provision", "epoch": epoch, "arg": arg}))))
+                # The deputy renders a benign template from its confined store...
+                legit = provision("default.tmpl")
+                require(legit.get("ok") is True and "store=confined" in legit.get("rendered", ""),
+                        f"provision deputy did not render the default template: {legit}")
+                # ...and the Stage 11 path flaw lets it escape the store to the
+                # provenance blob — a capability the operator did not have.
+                escaped = provision("../provenance.blob")
+                require(escaped.get("ok") is True, f"provision traversal did not render the blob: {escaped}")
+                blob = json.loads(escaped["rendered"])
+                require(blob.get("format") == "provenance/1" and blob.get("sig") and blob.get("tlv")
+                        and blob.get("tenant_uuid") == NORTH,
+                        f"extracted provenance blob is malformed: {blob}")
+                # False root is BOUNDED: the deputy (aether-prov) is not guest root.
+                # A guest-root secret is a clean denial, not a disclosure.
+                contained = provision("../../../etc/aether-agent/worker.key")
+                require("render failed" in contained.get("error", "")
+                        and "worker.key" not in json.dumps(contained),
+                        f"provision deputy read a guest-root secret (containment breach): {contained}")
+                # The operator still cannot read the confined store directly.
+                status, out = terminal.run("cat /var/lib/aether-provisioner/provenance.blob")
+                require(status != 0 and "denied" in out.lower(),
+                        f"operator read the confined store directly: {out!r}")
             finally:
                 terminal.close()
-            print("PASS: challenge stage 10 — correlating the descriptor, the boot epoch and "
-                  "/proc/net/unix reaches the confined provisioner over its abstract socket; "
-                  "a wrong epoch is refused and the ticket stays unreadable.", flush=True)
+            print("PASS: challenge stage 11 — the provisioning deputy escapes its store to the "
+                  "confined provenance blob (false root), yet cannot read guest-root secrets: "
+                  "the elevation is bounded to the aether-prov service identity.", flush=True)
 
             # Patched VM regression (organizer independent assertion — no player
             # terminal reaches this fixture): the patched agent signs the number and the
@@ -528,6 +559,23 @@ def run(web=False):
             print("PASS: patched stage 10 — the patched provisioner ignores the boot epoch "
                   "and requires a ticket; the world-readable shortcut is closed.", flush=True)
 
+            # Patched Stage 11 (organizer assertion with the ticket derived from the
+            # .env agent key): even an authenticated caller cannot traverse the store.
+            agent_key = next((line.split("=", 1)[1] for line in (ROOT / ".env").read_text().splitlines()
+                              if line.startswith("AETHER_AGENT_KEY=")), "")
+            ticket = hmac.new(bytes.fromhex(agent_key), b"aether-provisioner-ticket/v0",
+                              hashlib.sha256).hexdigest()
+
+            def p_provision(arg):
+                return json.loads(guest("aether-linux-vm-patched", provisioner_probe(
+                    p_epoch, json.dumps({"op": "provision", "ticket": ticket, "arg": arg}))))
+            require(p_provision("default.tmpl").get("ok") is True,
+                    "patched deputy refused a legitimate template")
+            require(p_provision("../provenance.blob").get("error") == "invalid template",
+                    "patched deputy allowed a store traversal")
+            print("PASS: patched stage 11 — the patched deputy confines rendering to its store; "
+                  "the traversal is refused even for an authenticated caller.", flush=True)
+
         # ---- Patched mode: the Stage 03 disclosure is closed ----
         legacy.switch("patched")
         status, body = player.request(f"/api/v2/tenant/migration?legacy_tenant_no={PLATFORM_INSTALLATION}")
@@ -561,8 +609,8 @@ def run(web=False):
             print("OK: application-only chain verified — Stages 01-05 (challenge) and the "
                   "patched 03/04/05 regressions. Linux Stages 06-08 not in scope.", flush=True)
         else:
-            print("OK: full chain verified — Stages 01-10 (challenge) through the real player "
-                  "interfaces, plus the patched 03/04/05/08/09/10 regressions.", flush=True)
+            print("OK: full chain verified — Stages 01-11 (challenge) through the real player "
+                  "interfaces, plus the patched 03/04/05/08/09/10/11 regressions.", flush=True)
     finally:
         try:
             for profile in profiles:

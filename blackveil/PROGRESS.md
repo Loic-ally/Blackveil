@@ -51,8 +51,17 @@ altering Stages 01–08.
   mode requires a non-world-readable ticket, closing the shortcut. Verified by 5
   host `cargo test` vectors and live through the player terminal in
   `make chain-verify` (Stages 01–10, exit 0). Spec: `docs/stages/stage-10.md`.
-- **Stages 11–15:** designed in `attack-graph-v3.md`; not yet implemented.
-  Stage 11 (False Root) will activate the provisioner's `provision` op.
+- **Stage 11 — False Root (privilege boundaries): implemented and
+  live-verified.** The provisioner's `provision` op renders templates from a
+  confined store (`root:aether-prov`); challenge mode joins the caller's `arg`
+  without sanitization, so `../provenance.blob` escapes the store as the deputy
+  and extracts the Stage 12 provenance blob — yet the same traversal to
+  `/etc/aether-agent/worker.key` is denied, proving the elevation is bounded to
+  the `aether-prov` identity (not guest root). Patched mode rejects any traversal.
+  Verified by host `cargo test` and live through the player terminal in
+  `make chain-verify` (Stages 01–11, exit 0). Spec: `docs/stages/stage-11.md`.
+- **Stages 12–15:** designed in `attack-graph-v3.md`; not yet implemented.
+  Stage 12 (Integrity Paradox) analyzes the extracted provenance blob.
 
 ## Milestones
 
