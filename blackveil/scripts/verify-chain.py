@@ -11,7 +11,7 @@ Two explicit scopes (Requirement 3):
   --web   Application-only: Stages 01-05 plus the patched-mode regressions.
           The Linux guest is NOT required. (`make web-chain-verify`)
 
-  (full)  Default: Stages 01-14. The Linux guest and its patched fixture are
+  (full)  Default: Stages 01-15. The Linux guest and its patched fixture are
           MANDATORY. A missing or unreachable guest is a hard failure that
           names the stages not executed and exits nonzero — it never prints a
           full-chain success message. (`make chain-verify`)
@@ -220,6 +220,28 @@ def provisioner_probe(socket_epoch, request_json):
     )
     enc = base64.b64encode(prog.encode()).decode()
     return f"python3 -c \"import base64;exec(base64.b64decode('{enc}'))\""
+
+
+def validator_submit(bundle):
+    """Submit a final proof bundle to the isolated validator. Organizer-only: it
+    runs inside the validator container (the service has no host port and is on a
+    dedicated internal network), which is exactly how the organizer scores."""
+    prog = (
+        "import urllib.request,urllib.error\n"
+        f"body={json.dumps(json.dumps(bundle))}.encode()\n"
+        "req=urllib.request.Request('http://127.0.0.1:9000/validate',data=body,"
+        "headers={'Content-Type':'application/json'},method='POST')\n"
+        "try:\n"
+        " print(urllib.request.urlopen(req,timeout=5).read().decode())\n"
+        "except urllib.error.HTTPError as e:\n"
+        " print(e.read().decode())\n"
+    )
+    enc = base64.b64encode(prog.encode()).decode()
+    result = subprocess.run(
+        legacy.worker.COMPOSE + ["exec", "-T", "aether-validator", "python3", "-c",
+                                 f"import base64;exec(base64.b64decode('{enc}'))"],
+        cwd=ROOT, capture_output=True, text=True)
+    return json.loads(result.stdout)
 
 
 def boot_epoch(text):
@@ -686,6 +708,31 @@ def run(web=False):
             print("PASS: patched stage 13 — the patched manifest binds identity to the signed "
                   "provenance and refuses the cross-tenant assertion.", flush=True)
 
+            # ---- Stage 15: THE BLACK VEIL (final proof, isolated validator) ----
+            # The public site carries a build tag that is the proof's domain label.
+            _, home = player.request("/")
+            home_text = home if isinstance(home, str) else home.decode("utf-8", "replace")
+            match = re.search(r'name="aether-migration-channel" content="([^"]+)"', home_text)
+            require(match is not None, "website migration-channel clue not found on the public site")
+            veil = match.group(1)
+            # Bring up the isolated organizer validator (own internal network, no host port).
+            subprocess.run(legacy.worker.COMPOSE + ["--profile", "validator", "up", "-d", "--wait",
+                           "--wait-timeout", "120", "aether-validator"],
+                           cwd=ROOT, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            bundle = {"attestation": incident_attestation, "veil_tag": veil,
+                      "manifest": "deploy-4102", "pivot_number": 4102, "tenant_uuid": HARBOR}
+            # An incomplete proof is rejected with progressive feedback.
+            incomplete = validator_submit({k: v for k, v in bundle.items() if k != "attestation"})
+            require(incomplete.get("black_veil") is False and "attestation" in incomplete.get("missing", []),
+                    f"validator accepted an incomplete proof: {incomplete}")
+            # The complete full-chain proof mints the final flag.
+            final = validator_submit(bundle)
+            require(final.get("black_veil") is True and final.get("flag", "").startswith("BV{"),
+                    f"final proof rejected: {final}")
+            print("PASS: challenge stage 15 — the full-chain proof (incident attestation + "
+                  f"cross-tenant manifest + website veil tag) is accepted by the isolated "
+                  f"validator: {final['flag']}", flush=True)
+
         # ---- Patched mode: the Stage 03 disclosure is closed ----
         legacy.switch("patched")
         status, body = player.request(f"/api/v2/tenant/migration?legacy_tenant_no={PLATFORM_INSTALLATION}")
@@ -719,7 +766,7 @@ def run(web=False):
             print("OK: application-only chain verified — Stages 01-05 (challenge) and the "
                   "patched 03/04/05 regressions. Linux Stages 06-08 not in scope.", flush=True)
         else:
-            print("OK: full chain verified — Stages 01-14 (challenge) through the real player "
+            print("OK: full chain verified — Stages 01-15 (challenge) through the real player "
                   "interfaces, plus the patched 03/04/05/08/09/10/11/12/13 regressions.", flush=True)
     finally:
         try:

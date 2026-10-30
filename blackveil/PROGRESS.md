@@ -87,9 +87,23 @@ altering Stages 01–08.
   an incident attestation (the Stage 15 input). Verified by 2 host `cargo test`
   vectors and live through the player terminal in `make chain-verify` (Stages
   01–14, exit 0). Spec: `docs/stages/stage-14.md`.
-- **Stage 15:** designed in `attack-graph-v3.md`; not yet implemented. The final
-  proof combines the incident attestation, a website clue and the chain evidence,
-  checked by an isolated organizer validator.
+- **Stage 15 — The Black Veil (final synthesis + isolated validator):
+  implemented and live-verified.** A subtle public-site clue
+  (`aether-migration-channel: veil/v0` in `web/app/layout.tsx`) is the proof's
+  domain label. The isolated `aether-validator` service (dedicated internal
+  network, no host port, key-holding, code mounted from `organizer/` so it never
+  enters a player image) mints `BV{…}` only for a complete proof assembled from
+  the incident attestation (14), the cross-tenant manifest/pivot (13) and the site
+  clue (15). Verified by the validator's self-checks and live in
+  `make chain-verify`: an incomplete proof is rejected with `missing`, the full
+  proof mints the flag (Stages 01–15, exit 0). Specs:
+  `docs/stages/stage-15.md`, `organizer/final-proof-design.md`.
+
+**BLACK VEIL is now player-solvable Stages 01–15**, end-to-end through the real
+HTTP API, the player WebSocket terminal and the guest services, with the final
+proof gated behind the isolated organizer validator. `make chain-verify` exercises
+the whole chain (challenge) plus the patched 03/04/05/08/09/10/11/12/13
+regressions and exits nonzero if the guest is unavailable.
 
 ## Milestones
 

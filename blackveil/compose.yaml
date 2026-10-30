@@ -258,6 +258,26 @@ services:
     security_opt: [no-new-privileges:true]
     restart: unless-stopped
 
+  aether-validator:
+    profiles: [validator]
+    image: python:3.13-alpine
+    command: ["python3", "-I", "/opt/validator/validate.py"]
+    environment:
+      AETHER_AGENT_KEY: ${AETHER_AGENT_KEY}
+    volumes:
+      - ./organizer/validator:/opt/validator:ro
+    networks: [validator]
+    healthcheck:
+      test: ["CMD-SHELL", "python3 -c \"import socket;socket.create_connection(('127.0.0.1',9000),timeout=2)\""]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    restart: unless-stopped
+
   aether-db:
     image: postgres:18-alpine
     environment:
@@ -314,6 +334,10 @@ networks:
     internal: true
   lab:
     name: ${BLACKVEIL_PROJECT:-blackveil}_lab_internal
+    driver: bridge
+    internal: true
+  validator:
+    name: ${BLACKVEIL_PROJECT:-blackveil}_validator_internal
     driver: bridge
     internal: true
 
