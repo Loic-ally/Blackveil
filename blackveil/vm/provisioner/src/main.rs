@@ -137,8 +137,10 @@ fn serve(stream: UnixStream, mode: Mode, epoch: &str, credential: &str) {
         Ok(req) => handle_request(mode, epoch, credential, &req),
         Err(_) => json!({"error": "malformed request"}),
     };
+    // One write: a Display of a Value emits many tiny writes on an unbuffered
+    // socket, which a single client read can tear. Build the line, then write once.
     let mut stream = stream;
-    let _ = writeln!(stream, "{reply}");
+    let _ = stream.write_all(format!("{reply}\n").as_bytes());
 }
 
 #[cfg(test)]

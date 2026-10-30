@@ -31,6 +31,7 @@ fi
 python3 /opt/aether/render-cloud-init.py \
   --agent /opt/aether/aether-agent \
   --indexer /opt/aether/aether-indexer \
+  --provisioner /opt/aether/aether-provisioner \
   --public-key "$state/operator_ed25519.pub" \
   --key "$key" \
   --mode "$mode" \

@@ -10,6 +10,12 @@ COPY indexer/Cargo.toml indexer/Cargo.lock ./
 COPY indexer/src ./src
 RUN cargo build --release --locked
 
+FROM rust:1.86-slim-bookworm AS provisioner-build
+WORKDIR /src
+COPY provisioner/Cargo.toml provisioner/Cargo.lock ./
+COPY provisioner/src ./src
+RUN cargo build --release --locked
+
 FROM debian:13-slim
 ARG TARGETARCH
 ENV DEBIAN_FRONTEND=noninteractive
@@ -31,9 +37,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && if [ "$TARGETARCH" = "arm64" ]; then test -e /usr/share/AAVMF/AAVMF_CODE.fd; else test -e /usr/share/OVMF/OVMF_CODE_4M.fd; fi
 COPY --from=agent-build /src/target/release/aether-agent /opt/aether/aether-agent
 COPY --from=indexer-build /src/target/release/aether-indexer /opt/aether/aether-indexer
+COPY --from=provisioner-build /src/target/release/aether-provisioner /opt/aether/aether-provisioner
 COPY render-cloud-init.py /opt/aether/render-cloud-init.py
 COPY entrypoint.sh /usr/local/bin/blackveil-vm-entrypoint
-RUN chmod 0755 /usr/local/bin/blackveil-vm-entrypoint /opt/aether/render-cloud-init.py /opt/aether/aether-agent /opt/aether/aether-indexer
+RUN chmod 0755 /usr/local/bin/blackveil-vm-entrypoint /opt/aether/render-cloud-init.py /opt/aether/aether-agent /opt/aether/aether-indexer /opt/aether/aether-provisioner
 USER 10001:10001
 EXPOSE 2222 18080
 ENTRYPOINT ["/usr/local/bin/blackveil-vm-entrypoint"]

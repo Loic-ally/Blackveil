@@ -11,7 +11,7 @@ Two explicit scopes (Requirement 3):
   --web   Application-only: Stages 01-05 plus the patched-mode regressions.
           The Linux guest is NOT required. (`make web-chain-verify`)
 
-  (full)  Default: Stages 01-09. The Linux guest and its patched fixture are
+  (full)  Default: Stages 01-10. The Linux guest and its patched fixture are
           MANDATORY. A missing or unreachable guest is a hard failure that
           names the stages not executed and exits nonzero — it never prints a
           full-chain success message. (`make chain-verify`)
@@ -194,6 +194,37 @@ def indexer_probe(tenant_uuid, marker):
     )
     enc = base64.b64encode(prog.encode()).decode()
     return f"python3 -c \"import base64;exec(base64.b64decode('{enc}'))\""
+
+
+PROV_SOCKET = "aether-prov"
+
+
+def provisioner_probe(socket_epoch, request_json):
+    """A single `python3 -c` command that connects to the provisioner's per-boot
+    abstract unix socket (@aether-prov.<socket_epoch>) and sends one JSON request
+    line, printing the reply. base64-wrapped for the terminal and SSH."""
+    prog = (
+        "import socket\n"
+        f"a='\\0{PROV_SOCKET}.{socket_epoch}'\n"
+        "s=socket.socket(socket.AF_UNIX,socket.SOCK_STREAM)\n"
+        "s.settimeout(5)\n"
+        "s.connect(a)\n"
+        f"s.sendall({json.dumps(request_json)}.encode()+b'\\n')\n"
+        "d=b''\n"
+        "while True:\n"
+        " c=s.recv(4096)\n"
+        " if not c: break\n"
+        " d+=c\n"
+        "print(d.decode('utf-8','replace'))\n"
+    )
+    enc = base64.b64encode(prog.encode()).decode()
+    return f"python3 -c \"import base64;exec(base64.b64decode('{enc}'))\""
+
+
+def boot_epoch(text):
+    """First 8 hex of a boot_id string (the provisioner's handshake epoch)."""
+    line = text.strip().splitlines()[-1].strip() if text.strip() else ""
+    return line.replace("-", "")[:8]
 
 
 def reach_tenant_admin(player, tenant):
@@ -425,11 +456,38 @@ def run(web=False):
                 nomark = json.loads(terminal.ok(indexer_probe(NORTH, "0x00")))
                 require(nomark.get("error") == "origin marker",
                         f"indexer resolved a record without the trusted marker: {nomark}")
+                require(bypass.get("provisioner", {}).get("service") == "aether-provisioner",
+                        "stage 09 descriptor did not name the provisioner (stage 10 entry)")
+                print("PASS: challenge stage 09 — reversing the legacy indexer, a crafted "
+                      "legacy-envelope/0 record carrying the trusted-transport marker resolves a "
+                      "provisioning descriptor with no signing key (compat-shim bypass).", flush=True)
+
+                # ---- Stage 10: namespace labyrinth (reach the confined provisioner) ----
+                # Correlate three world-readable observations: the Stage 09
+                # descriptor (names the provisioner), the boot epoch, and the
+                # abstract socket in /proc/net/unix.
+                epoch = boot_epoch(terminal.ok("cat /proc/sys/kernel/random/boot_id"))
+                require(len(epoch) == 8, f"could not read the guest boot epoch: {epoch!r}")
+                unix = terminal.ok("cat /proc/net/unix")
+                require(f"@{PROV_SOCKET}.{epoch}" in unix,
+                        "provisioner abstract socket not discoverable in /proc/net/unix")
+                # The provisioner runs in a private mount namespace: its mountinfo
+                # differs from the operator's (a Linux-internals confirming signal).
+                desc = json.loads(terminal.ok(provisioner_probe(epoch, json.dumps({"op": "describe", "epoch": epoch}))))
+                require(desc.get("ok") is True and desc.get("provision", {}).get("next") == "false-root",
+                        f"provisioner handshake did not return the Stage 11 reference: {desc}")
+                wrong = json.loads(terminal.ok(provisioner_probe(epoch, json.dumps({"op": "describe", "epoch": "00000000"}))))
+                require(wrong.get("error") == "handshake",
+                        f"provisioner accepted a wrong boot epoch: {wrong}")
+                # Containment: the patched-mode ticket is not operator-readable.
+                status, out = terminal.run("cat /etc/aether-provisioner/ticket")
+                require(status != 0 and "denied" in out.lower(),
+                        f"operator could read the provisioner ticket: {out!r}")
             finally:
                 terminal.close()
-            print("PASS: challenge stage 09 — reversing the legacy indexer, a crafted "
-                  "legacy-envelope/0 record carrying the trusted-transport marker resolves a "
-                  "provisioning descriptor with no signing key (compat-shim bypass).", flush=True)
+            print("PASS: challenge stage 10 — correlating the descriptor, the boot epoch and "
+                  "/proc/net/unix reaches the confined provisioner over its abstract socket; "
+                  "a wrong epoch is refused and the ticket stays unreadable.", flush=True)
 
             # Patched VM regression (organizer independent assertion — no player
             # terminal reaches this fixture): the patched agent signs the number and the
@@ -457,6 +515,18 @@ def run(web=False):
                     f"patched indexer served a legacy-transport record: {refused9!r}")
             print("PASS: patched stage 09 — the patched indexer decommissions the legacy "
                   "transport; the crafted record is refused.", flush=True)
+
+            # Patched Stage 10 (organizer assertion on the patched guest): the
+            # patched provisioner ignores the world-readable boot epoch and requires
+            # a ticket, so the correlation shortcut no longer authorizes describe.
+            p_epoch = boot_epoch(guest("aether-linux-vm-patched", "cat /proc/sys/kernel/random/boot_id"))
+            require(len(p_epoch) == 8, f"could not read patched guest boot epoch: {p_epoch!r}")
+            p_desc = guest("aether-linux-vm-patched",
+                           provisioner_probe(p_epoch, json.dumps({"op": "describe", "epoch": p_epoch})))
+            require('"handshake"' in p_desc,
+                    f"patched provisioner honored the epoch shortcut: {p_desc!r}")
+            print("PASS: patched stage 10 — the patched provisioner ignores the boot epoch "
+                  "and requires a ticket; the world-readable shortcut is closed.", flush=True)
 
         # ---- Patched mode: the Stage 03 disclosure is closed ----
         legacy.switch("patched")
@@ -491,8 +561,8 @@ def run(web=False):
             print("OK: application-only chain verified — Stages 01-05 (challenge) and the "
                   "patched 03/04/05 regressions. Linux Stages 06-08 not in scope.", flush=True)
         else:
-            print("OK: full chain verified — Stages 01-09 (challenge) through the real player "
-                  "interfaces, plus the patched 03/04/05/08/09 regressions.", flush=True)
+            print("OK: full chain verified — Stages 01-10 (challenge) through the real player "
+                  "interfaces, plus the patched 03/04/05/08/09/10 regressions.", flush=True)
     finally:
         try:
             for profile in profiles:

@@ -90,6 +90,44 @@ ReadOnlyPaths=/etc/aether-indexer
 WantedBy=multi-user.target
 """
 
+# Stage 10-11 (BV-10/11): the confined provisioner. Private mount + tmp
+# namespaces (a visible /proc/<pid>/mountinfo difference) but NOT a private
+# network namespace, so its abstract socket stays reachable in the guest's main
+# net namespace. Runs as the unprivileged aether-prov account. The binary is
+# world-readable for RE; the patched-mode ticket is root/aether-prov only.
+UNIT_PROVISIONER = """[Unit]
+Description=AETHER confined provisioning service
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=aether-prov
+Group=aether-prov
+Environment=AETHER_AGENT_MODE={mode}
+ExecStart=/usr/local/sbin/aether-provisioner
+Restart=on-failure
+RestartSec=2
+NoNewPrivileges=yes
+PrivateTmp=yes
+PrivateMounts=yes
+ProtectHome=yes
+ProtectSystem=strict
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictAddressFamilies=AF_UNIX
+RestrictNamespaces=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+ReadOnlyPaths=/etc/aether-provisioner
+
+[Install]
+WantedBy=multi-user.target
+"""
+
 
 def block(path: str, content: str, mode: str, owner: str = "root:root") -> str:
     lines = [
@@ -105,6 +143,7 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--agent", required=True, type=Path)
     parser.add_argument("--indexer", required=True, type=Path)
+    parser.add_argument("--provisioner", required=True, type=Path)
     parser.add_argument("--public-key", required=True, type=Path)
     parser.add_argument("--key", required=True)
     parser.add_argument("--mode", choices=("challenge", "patched"), required=True)
@@ -121,6 +160,11 @@ def main() -> None:
     # Stage 09 legacy bypass needs no key at all.
     indexer_key = hmac.new(bytes.fromhex(args.key), b"aether-indexer-transport/v0",
                            hashlib.sha256).hexdigest()
+    provisioner = base64.b64encode(args.provisioner.read_bytes()).decode("ascii")
+    # Patched-mode provisioner ticket: distinct derived secret, root/aether-prov
+    # only, never world-readable. Unused in challenge mode.
+    provisioner_ticket = hmac.new(bytes.fromhex(args.key), b"aether-provisioner-ticket/v0",
+                                  hashlib.sha256).hexdigest()
     public_key = args.public_key.read_text().strip()
     tenant_map = "".join(f"{uuid},{legacy}\n" for uuid, legacy in TENANTS)
     agent_env = f"AETHER_AGENT_MODE={args.mode}\n"
@@ -137,6 +181,11 @@ def main() -> None:
         "  - path: /usr/local/sbin/aether-indexer\n    owner: root:root\n    permissions: '0755'\n    encoding: b64\n    content: " + indexer,
         block("/etc/aether-indexer/transport.key", indexer_key + "\n", "0600"),
         block("/etc/systemd/system/aether-indexer.service", UNIT_INDEXER.format(mode=args.mode), "0644"),
+        # Stage 10-11: the provisioner binary (world-readable for RE) and its
+        # patched-mode ticket (provisioned root/aether-prov below).
+        "  - path: /usr/local/sbin/aether-provisioner\n    owner: root:root\n    permissions: '0755'\n    encoding: b64\n    content: " + provisioner,
+        block("/etc/aether-provisioner/ticket", provisioner_ticket + "\n", "0600"),
+        block("/etc/systemd/system/aether-provisioner.service", UNIT_PROVISIONER.format(mode=args.mode), "0644"),
     ]
     for legacy, content in ARCHIVES.items():
         files.append(block(f"/var/lib/aether-agent/archive-{legacy}.json", content + "\n", "0600"))
@@ -198,6 +247,11 @@ def main() -> None:
         "  - [/bin/chown, 'root:aether-indexer', /etc/aether-indexer/transport.key]",
         "  - [/bin/chmod, '0640', /etc/aether-indexer/transport.key]",
         "  - [systemctl, enable, --now, aether-indexer.service]",
+        # Stage 10-11 provisioner: confined service account; ticket root:aether-prov.
+        "  - [/usr/sbin/useradd, --system, --user-group, --home-dir, /nonexistent, --shell, /usr/sbin/nologin, --no-create-home, aether-prov]",
+        "  - [/bin/chown, 'root:aether-prov', /etc/aether-provisioner/ticket]",
+        "  - [/bin/chmod, '0640', /etc/aether-provisioner/ticket]",
+        "  - [systemctl, enable, --now, aether-provisioner.service]",
         "  - [systemctl, enable, --now, aether-agent.service]",
         "  - [systemctl, restart, ssh.service]",
         "  - [/bin/sh, -c, 'if id debian >/dev/null 2>&1; then usermod -L debian; gpasswd -d debian sudo >/dev/null 2>&1 || true; userdel --remove debian || true; fi']",

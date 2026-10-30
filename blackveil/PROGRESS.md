@@ -42,7 +42,17 @@ altering Stages 01–08.
   Verified by 7 host `cargo test` vectors and live through the player's own
   WebSocket terminal as part of `make chain-verify` (Stages 01–09, exit 0).
   Spec: `docs/stages/stage-09.md`.
-- **Stages 10–15:** designed in `attack-graph-v3.md`; not yet implemented.
+- **Stage 10 — Namespace Labyrinth (Linux internals): implemented and
+  live-verified.** New confined `aether-provisioner` service (`vm/provisioner/`)
+  under its own `aether-prov` account in a private mount namespace, on a per-boot
+  abstract unix socket `@aether-prov.<boot8>`. Challenge mode gates the `describe`
+  handshake on the world-readable boot epoch (reached by correlating the Stage 09
+  descriptor, `/proc/net/unix` and `/proc/sys/kernel/random/boot_id`); patched
+  mode requires a non-world-readable ticket, closing the shortcut. Verified by 5
+  host `cargo test` vectors and live through the player terminal in
+  `make chain-verify` (Stages 01–10, exit 0). Spec: `docs/stages/stage-10.md`.
+- **Stages 11–15:** designed in `attack-graph-v3.md`; not yet implemented.
+  Stage 11 (False Root) will activate the provisioner's `provision` op.
 
 ## Milestones
 
