@@ -338,7 +338,15 @@ def main() -> None:
     ])
     args.output.mkdir(parents=True, exist_ok=True)
     (args.output / "user-data").write_text(cloud_config)
-    (args.output / "meta-data").write_text("instance-id: blackveil-aether-linux-v1\nlocal-hostname: aether-linux\n")
+    # Instance-id encodes a short hash of all three binaries so that rebuilding
+    # any service binary changes the id and forces cloud-init to re-provision the
+    # guest on next boot (write_files and runcmd run again with the new binaries).
+    binary_hash = hashlib.sha256(
+        args.agent.read_bytes() + args.indexer.read_bytes() + args.provisioner.read_bytes()
+    ).hexdigest()[:12]
+    (args.output / "meta-data").write_text(
+        f"instance-id: blackveil-aether-linux-{binary_hash}\nlocal-hostname: aether-linux\n"
+    )
 
 
 if __name__ == "__main__":

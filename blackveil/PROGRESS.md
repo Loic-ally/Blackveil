@@ -1,15 +1,19 @@
 # BLACK VEIL build progress
 
-Last source and local-stack review: **2026-10-29**. Implementation and the
+Last source and local-stack review: **2026-10-30**. Implementation and the
 commands rerun during this review are distinguished below; the exact commands
 and exit codes are in `organizer/full-chain-validation.md`.
 
 ## Current milestone
 
-AETHER has an implemented application baseline and Stages 01–08 are playable.
-Stages 09–15 are not implemented.
+All 15 stages are implemented and player-reachable. Stages 01–15 pass
+`scripts/verify-chain.py` (full scope) on the running stack with rebuilt
+guest VMs. A complete clean-room run (`scripts/validate-clean-room.py`) has
+not yet produced a new archived exit-0 result at the current HEAD; the two
+archived runs (`organizer/validation-runs/`) used an earlier commit. See
+`organizer/remaining-risks.md`.
 
-**BLACK VEIL is playable Stage 01 through Stage 08 with no organizer action.**
+**BLACK VEIL is playable Stage 01 through Stage 15 with no organizer action.**
 The full chain — ordinary signup → Stage 01 historical export → 02 administrator
 recovery → 03 historical reconstruction → 04 reporting-identity enrollment → 05
 operator recovery (`system_admin`) → 06 restricted Linux operator shell → 07
@@ -319,7 +323,9 @@ Current commands, exit codes and remaining gaps are recorded in
 [organizer/full-chain-validation.md](organizer/full-chain-validation.md).
 Earlier verification claims in this file describe historical reports; they are
 not evidence that this working tree or its deployed images passed a fresh run.
-Stages 01–08 are implemented. Stages 09–15 remain unimplemented.
+All 15 stages are implemented and live-verified on the running stack (see
+`make chain-verify`). A new clean-room run is needed to archive an exit-0
+result at HEAD; see `organizer/remaining-risks.md` for the blocker.
 
 The full-chain target requires already-running challenge and patched guests.
 Stages 06–08 use one authenticated player WebSocket session, including protocol

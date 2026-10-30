@@ -37,8 +37,9 @@ The worker sends enrolled archive reports to the guest agent. The browser
 terminal requires the `system_admin` milestone, which a player reaches through
 the Stage 01–05 challenge chain (ordinary signup → `tenant_admin` →
 `system_admin`) with no organizer action; Stages 06–08 then play out inside that
-terminal. Stages 09–15 are not implemented. Run `make worker-verify` with the VM
-running to exercise real queued archive delivery.
+terminal. Stages 09–15 are implemented and player-reachable (the full chain runs through
+the WebSocket terminal and the `/lab` final-proof form). Run `make worker-verify`
+with the VM running to exercise real queued archive delivery.
 
 ## Useful commands
 
@@ -55,7 +56,7 @@ make legacy-verify  # Verify Stage 01 in challenge and patched modes
 make recovery-verify # Verify Stage 02 from ordinary signup in both modes
 make db-roles-verify # Check service-specific database privileges
 make web-chain-verify # Verify the player chain Stages 01-05 (no Linux guest)
-make chain-verify   # Verify the full player chain Stages 01-08 (requires both guests already running)
+make chain-verify   # Verify the full player chain Stages 01-15 (requires both guests already running)
 make fencing-verify # Stale worker lease cannot complete or fail a reclaimed job
 make reset-verify   # Fresh/guest restart/agent restart/VM reset/full reset in a disposable copy, chain after each
 make vm-reset       # Remove only the two Linux guest disks and keys
