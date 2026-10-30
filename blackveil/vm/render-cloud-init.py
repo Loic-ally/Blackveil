@@ -181,7 +181,7 @@ def main() -> None:
     provenance_blob = json.dumps({
         "format": "provenance/1", "service": prov_service, "tenant_uuid": prov_uuid,
         "legacy_tenant_no": prov_no, "issued_at": prov_issued,
-        "tlv": base64.b64encode(prov_tlv).decode(), "sig": prov_sig,
+        "tlv": prov_tlv.hex(), "sig": prov_sig,
     }, indent=2)
     public_key = args.public_key.read_text().strip()
     tenant_map = "".join(f"{uuid},{legacy}\n" for uuid, legacy in TENANTS)

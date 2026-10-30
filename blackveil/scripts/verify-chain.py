@@ -11,7 +11,7 @@ Two explicit scopes (Requirement 3):
   --web   Application-only: Stages 01-05 plus the patched-mode regressions.
           The Linux guest is NOT required. (`make web-chain-verify`)
 
-  (full)  Default: Stages 01-11. The Linux guest and its patched fixture are
+  (full)  Default: Stages 01-12. The Linux guest and its patched fixture are
           MANDATORY. A missing or unreachable guest is a hard failure that
           names the stages not executed and exits nonzero — it never prints a
           full-chain success message. (`make chain-verify`)
@@ -226,6 +226,25 @@ def boot_epoch(text):
     """First 8 hex of a boot_id string (the provisioner's handshake epoch)."""
     line = text.strip().splitlines()[-1].strip() if text.strip() else ""
     return line.replace("-", "")[:8]
+
+
+def agent_provenance_probe(blob_json):
+    """A single `python3 -c` command that POSTs a provenance blob to the agent's
+    /v1/provenance endpoint and prints the reply body (including error bodies).
+    base64-wrapped for the terminal and SSH."""
+    prog = (
+        "import urllib.request,urllib.error\n"
+        # Double-encode so the blob embeds as a Python string literal, not a dict.
+        f"body={json.dumps(json.dumps(blob_json))}.encode()\n"
+        "req=urllib.request.Request('http://127.0.0.1:8080/v1/provenance',data=body,"
+        "headers={'Content-Type':'application/json'},method='POST')\n"
+        "try:\n"
+        " print(urllib.request.urlopen(req,timeout=5).read().decode())\n"
+        "except urllib.error.HTTPError as e:\n"
+        " print(e.read().decode())\n"
+    )
+    enc = base64.b64encode(prog.encode()).decode()
+    return f"python3 -c \"import base64;exec(base64.b64decode('{enc}'))\""
 
 
 def reach_tenant_admin(player, tenant):
@@ -514,11 +533,30 @@ def run(web=False):
                 status, out = terminal.run("cat /var/lib/aether-provisioner/provenance.blob")
                 require(status != 0 and "denied" in out.lower(),
                         f"operator read the confined store directly: {out!r}")
+                print("PASS: challenge stage 11 — the provisioning deputy escapes its store to the "
+                      "confined provenance blob (false root), yet cannot read guest-root secrets: "
+                      "the elevation is bounded to the aether-prov service identity.", flush=True)
+
+                # ---- Stage 12: the integrity paradox (provenance verification) ----
+                # The genuine blob verifies; the agent reports the JSON identity.
+                genuine = json.loads(terminal.ok(agent_provenance_probe(blob)))
+                require(genuine.get("verified") is True and genuine.get("legacy_tenant_no") == 4101
+                        and genuine.get("tenant_uuid") == NORTH,
+                        f"genuine provenance did not verify: {genuine}")
+                # The paradox: edit the JSON identity but keep tlv+sig. The signature
+                # still covers the original TLV, yet the verifier trusts the JSON.
+                forged = dict(blob)
+                forged["legacy_tenant_no"] = 4102
+                forged["tenant_uuid"] = HARBOR
+                confused = json.loads(terminal.ok(agent_provenance_probe(forged)))
+                require(confused.get("verified") is True and confused.get("legacy_tenant_no") == 4102
+                        and confused.get("tenant_uuid") == HARBOR and confused.get("source") == "json",
+                        f"challenge verifier did not trust the edited JSON identity: {confused}")
             finally:
                 terminal.close()
-            print("PASS: challenge stage 11 — the provisioning deputy escapes its store to the "
-                  "confined provenance blob (false root), yet cannot read guest-root secrets: "
-                  "the elevation is bounded to the aether-prov service identity.", flush=True)
+            print("PASS: challenge stage 12 — the provenance signature covers the canonical TLV, "
+                  "but the verifier trusts the JSON fields: an edited identity with the original "
+                  "signature is accepted (integrity paradox).", flush=True)
 
             # Patched VM regression (organizer independent assertion — no player
             # terminal reaches this fixture): the patched agent signs the number and the
@@ -576,6 +614,18 @@ def run(web=False):
             print("PASS: patched stage 11 — the patched deputy confines rendering to its store; "
                   "the traversal is refused even for an authenticated caller.", flush=True)
 
+            # Patched Stage 12 (organizer assertion on the patched guest): the
+            # patched verifier binds the identity to the signed TLV, so an edited
+            # JSON field is a mismatch. The provenance key is shared (both guests
+            # use the .env agent key), so the extracted blob verifies there too.
+            p_forged = dict(blob)
+            p_forged["legacy_tenant_no"] = 4102
+            p_conf = json.loads(guest("aether-linux-vm-patched", agent_provenance_probe(p_forged)))
+            require(p_conf.get("error") == "provenance field mismatch",
+                    f"patched verifier trusted an edited JSON identity: {p_conf}")
+            print("PASS: patched stage 12 — the patched verifier derives identity from the signed "
+                  "TLV and rejects JSON that disagrees.", flush=True)
+
         # ---- Patched mode: the Stage 03 disclosure is closed ----
         legacy.switch("patched")
         status, body = player.request(f"/api/v2/tenant/migration?legacy_tenant_no={PLATFORM_INSTALLATION}")
@@ -609,8 +659,8 @@ def run(web=False):
             print("OK: application-only chain verified — Stages 01-05 (challenge) and the "
                   "patched 03/04/05 regressions. Linux Stages 06-08 not in scope.", flush=True)
         else:
-            print("OK: full chain verified — Stages 01-11 (challenge) through the real player "
-                  "interfaces, plus the patched 03/04/05/08/09/10/11 regressions.", flush=True)
+            print("OK: full chain verified — Stages 01-12 (challenge) through the real player "
+                  "interfaces, plus the patched 03/04/05/08/09/10/11/12 regressions.", flush=True)
     finally:
         try:
             for profile in profiles:

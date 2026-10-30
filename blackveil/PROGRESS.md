@@ -60,8 +60,17 @@ altering Stages 01–08.
   the `aether-prov` identity (not guest root). Patched mode rejects any traversal.
   Verified by host `cargo test` and live through the player terminal in
   `make chain-verify` (Stages 01–11, exit 0). Spec: `docs/stages/stage-11.md`.
-- **Stages 12–15:** designed in `attack-graph-v3.md`; not yet implemented.
-  Stage 12 (Integrity Paradox) analyzes the extracted provenance blob.
+- **Stage 12 — The Integrity Paradox (applied cryptography): implemented and
+  live-verified.** The agent gained an additive `POST /v1/provenance` endpoint
+  (Stage 08 archive path byte-for-byte unchanged). Challenge mode verifies the
+  HMAC over the canonical TLV but reports the identity from the blob's
+  unauthenticated JSON fields, so an edited-JSON blob with the original signature
+  is accepted as a different identity; patched mode binds the identity to the
+  signed TLV and rejects a mismatch. No primitive is broken. Verified by 4 host
+  `cargo test` vectors and live through the player terminal in `make chain-verify`
+  (Stages 01–12, exit 0). Spec: `docs/stages/stage-12.md`.
+- **Stages 13–15:** designed in `attack-graph-v3.md`; not yet implemented.
+  Stage 13 (Broken Trust Chain) chains the forged token across ≥3 components.
 
 ## Milestones
 
