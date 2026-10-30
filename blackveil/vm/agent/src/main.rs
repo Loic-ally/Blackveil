@@ -130,6 +130,11 @@ fn handle(mut stream: TcpStream, mode: &str, key: &str, provenance: &str, tenant
             let (status, value) = manifest_decision(mode, provenance, tenants, &body);
             respond(&mut stream, status, value);
         }
+        // Stage 14 (additive): score a forensic incident reconstruction.
+        ("POST", "/v1/incident") => {
+            let (status, value) = incident_decision(key, &body);
+            respond(&mut stream, status, value);
+        }
         _ => respond(&mut stream, 404, serde_json::json!({"error":"not found"})),
     }
 }
@@ -227,6 +232,47 @@ fn manifest_decision(mode: &str, provenance_key: &str, tenants: &HashMap<String,
         "job_ref": job_ref,
         "evidence": "/var/lib/aether-migration/incident",
         "next": "everything-was-logged"
+    }))
+}
+
+// Stage 14 (BV-14): score a forensic incident reconstruction. The scorer
+// recomputes the deterministic incident seed from the worker key (matching
+// render-cloud-init.py) and accepts only the correct guest clock offset, pivot
+// job and cross-tenant target number. On success it returns an incident
+// attestation (an HMAC the Stage 15 validator requires). This is a correctness
+// oracle; it behaves the same in both modes.
+fn incident_decision(worker_key_hex: &str, body: &[u8]) -> (u16, serde_json::Value) {
+    let request: serde_json::Value = match serde_json::from_slice(body) {
+        Ok(value) => value,
+        Err(_) => return (400, serde_json::json!({"error": "invalid reconstruction"})),
+    };
+    let raw = match decode_hex(worker_key_hex) {
+        Some(bytes) => bytes,
+        None => return (500, serde_json::json!({"error": "scorer unavailable"})),
+    };
+    let seed = {
+        let mut mac = match HmacSha256::new_from_slice(&raw) {
+            Ok(mac) => mac,
+            Err(_) => return (500, serde_json::json!({"error": "scorer unavailable"})),
+        };
+        mac.update(b"aether-incident/v0");
+        mac.finalize().into_bytes()
+    };
+    let offset_expected = (seed[0] % 40 + 20) as u64;
+    let job_expected = format!("mig-{}", &to_hex(&seed)[..8]);
+    let offset = request.get("offset").and_then(|v| v.as_u64());
+    let job = request.get("pivot_job").and_then(|v| v.as_str()).unwrap_or_default();
+    let number = request.get("pivot_number").and_then(|v| v.as_u64());
+    if offset != Some(offset_expected) || job != job_expected || number != Some(4102) {
+        return (403, serde_json::json!({"error": "reconstruction incorrect"}));
+    }
+    let mut mac = HmacSha256::new_from_slice(&seed).expect("hmac key");
+    mac.update(b"incident-attestation/v0");
+    mac.update(job.as_bytes());
+    (200, serde_json::json!({
+        "incident": "resolved",
+        "attestation": to_hex(&mac.finalize().into_bytes()),
+        "next": "the-black-veil"
     }))
 }
 
@@ -534,5 +580,38 @@ mod provenance_tests {
         let body = manifest_req(blob_val(HARBOR, 4102, UUID, 4101), HARBOR, 4102, "mig-capture-abcd");
         let (status, value) = manifest_decision("patched", &key, &tenant_map(), &body);
         assert_eq!((status, value["error"].clone()), (403, serde_json::json!("provenance field mismatch")));
+    }
+
+    fn incident_seed() -> [u8; 32] {
+        let raw = decode_hex(WORKER).unwrap();
+        let mut mac = HmacSha256::new_from_slice(&raw).unwrap();
+        mac.update(b"aether-incident/v0");
+        mac.finalize().into_bytes().into()
+    }
+
+    #[test]
+    fn incident_scorer_accepts_correct_reconstruction() {
+        let seed = incident_seed();
+        let offset = (seed[0] % 40 + 20) as u64;
+        let job = format!("mig-{}", &to_hex(&seed)[..8]);
+        let body = serde_json::json!({"offset": offset, "pivot_job": job, "pivot_number": 4102})
+            .to_string().into_bytes();
+        let (status, value) = incident_decision(WORKER, &body);
+        assert_eq!(status, 200);
+        assert_eq!(value["incident"], serde_json::json!("resolved"));
+        assert!(value["attestation"].as_str().unwrap().len() == 64);
+    }
+
+    #[test]
+    fn incident_scorer_rejects_wrong_offset_and_target() {
+        let seed = incident_seed();
+        let offset = (seed[0] % 40 + 20) as u64;
+        let job = format!("mig-{}", &to_hex(&seed)[..8]);
+        let wrong_offset = serde_json::json!({"offset": offset + 1, "pivot_job": job, "pivot_number": 4102})
+            .to_string().into_bytes();
+        assert_eq!(incident_decision(WORKER, &wrong_offset).0, 403);
+        let wrong_target = serde_json::json!({"offset": offset, "pivot_job": job, "pivot_number": 4101})
+            .to_string().into_bytes();
+        assert_eq!(incident_decision(WORKER, &wrong_target).0, 403);
     }
 }

@@ -11,7 +11,7 @@ Two explicit scopes (Requirement 3):
   --web   Application-only: Stages 01-05 plus the patched-mode regressions.
           The Linux guest is NOT required. (`make web-chain-verify`)
 
-  (full)  Default: Stages 01-13. The Linux guest and its patched fixture are
+  (full)  Default: Stages 01-14. The Linux guest and its patched fixture are
           MANDATORY. A missing or unreachable guest is a hard failure that
           names the stages not executed and exits nonzero — it never prints a
           full-chain success message. (`make chain-verify`)
@@ -575,11 +575,35 @@ def run(web=False):
                     manifest_request, mapping={"tenant_uuid": NORTH, "legacy_tenant_no": 4101}))))
                 require(broken.get("error") == "trust chain broken",
                         f"trust chain accepted uncorrelated facts: {broken}")
+                print("PASS: challenge stage 13 — correlating the worker job reference, the forged "
+                      "provenance token and the API mapping assembles a cross-tenant deployment "
+                      "manifest that no single service would grant (broken distributed trust).", flush=True)
+
+                # ---- Stage 14: everything was logged (forensic reconstruction) ----
+                inc = manifest["evidence"]  # /var/lib/aether-migration/incident
+                w_events = [json.loads(x) for x in terminal.ok(f"cat {inc}/worker.jsonl").splitlines() if x.startswith("{")]
+                a_events = [json.loads(x) for x in terminal.ok(f"cat {inc}/agent-trace.log").splitlines() if x.startswith("{")]
+                # Align the heartbeat present in both sources to recover the offset.
+                w_hb = next(e["ts"] for e in w_events if e.get("job") == "hb-0")
+                a_hb = next(e["gts"] for e in a_events if e.get("ref") == "hb-0")
+                offset = a_hb - w_hb
+                # The pivot: the agent resolved a tenant number the actor did not own.
+                pivot = next(e for e in a_events if e.get("resolved_no") not in (None, 4101))
+                submission = {"offset": offset, "pivot_job": pivot["job"], "pivot_number": pivot["resolved_no"]}
+                incident = json.loads(terminal.ok(agent_post_probe("/v1/incident", submission)))
+                require(incident.get("incident") == "resolved" and incident.get("attestation")
+                        and incident.get("next") == "the-black-veil",
+                        f"incident reconstruction rejected: {incident}")
+                incident_attestation = incident["attestation"]
+                # The clock alignment matters: a wrong offset is rejected.
+                wrong = json.loads(terminal.ok(agent_post_probe("/v1/incident", dict(submission, offset=offset + 1))))
+                require(wrong.get("error") == "reconstruction incorrect",
+                        f"scorer accepted a wrong offset: {wrong}")
             finally:
                 terminal.close()
-            print("PASS: challenge stage 13 — correlating the worker job reference, the forged "
-                  "provenance token and the API mapping assembles a cross-tenant deployment "
-                  "manifest that no single service would grant (broken distributed trust).", flush=True)
+            print("PASS: challenge stage 14 — reconstructing the incident across worker, agent and "
+                  "API evidence (correcting the guest clock offset and the retry) yields the pivot "
+                  "and a scorer-issued incident attestation.", flush=True)
 
             # Patched VM regression (organizer independent assertion — no player
             # terminal reaches this fixture): the patched agent signs the number and the
@@ -695,7 +719,7 @@ def run(web=False):
             print("OK: application-only chain verified — Stages 01-05 (challenge) and the "
                   "patched 03/04/05 regressions. Linux Stages 06-08 not in scope.", flush=True)
         else:
-            print("OK: full chain verified — Stages 01-13 (challenge) through the real player "
+            print("OK: full chain verified — Stages 01-14 (challenge) through the real player "
                   "interfaces, plus the patched 03/04/05/08/09/10/11/12/13 regressions.", flush=True)
     finally:
         try:

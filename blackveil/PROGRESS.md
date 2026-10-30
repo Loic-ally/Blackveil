@@ -79,8 +79,17 @@ altering Stages 01–08.
   (`deploy-4102`); patched mode resolves against the signed TLV and refuses.
   Verified by 4 host `cargo test` vectors and live through the player terminal in
   `make chain-verify` (Stages 01–13, exit 0). Spec: `docs/stages/stage-13.md`.
-- **Stages 14–15:** designed in `attack-graph-v3.md`; not yet implemented.
-  Stage 14 (forensics) reconstructs the incident the manifest points at.
+- **Stage 14 — Everything Was Logged (digital forensics): implemented and
+  live-verified.** A deterministic incident evidence set (worker/agent/API, with a
+  guest clock offset and a retry) is seeded under
+  `/var/lib/aether-migration/incident/`; the additive agent `POST /v1/incident`
+  scorer accepts only the correct `(offset, pivot_job, pivot_number)` and returns
+  an incident attestation (the Stage 15 input). Verified by 2 host `cargo test`
+  vectors and live through the player terminal in `make chain-verify` (Stages
+  01–14, exit 0). Spec: `docs/stages/stage-14.md`.
+- **Stage 15:** designed in `attack-graph-v3.md`; not yet implemented. The final
+  proof combines the incident attestation, a website clue and the chain evidence,
+  checked by an isolated organizer validator.
 
 ## Milestones
 

@@ -183,6 +183,37 @@ def main() -> None:
         "legacy_tenant_no": prov_no, "issued_at": prov_issued,
         "tlv": prov_tlv.hex(), "sig": prov_sig,
     }, indent=2)
+    # Stage 14 (BV-14) seeded incident: the original migration incident, spread
+    # across worker, agent-trace and API-audit evidence with a deterministic guest
+    # clock offset and a retry. The scorer recomputes this seed from the worker key.
+    incident_seed = hmac.new(bytes.fromhex(args.key), b"aether-incident/v0", hashlib.sha256).digest()
+    inc_offset = incident_seed[0] % 40 + 20
+    inc_base = 1_793_000_000
+    inc_job = "mig-" + incident_seed.hex()[:8]
+    (north_uuid, north_no), (harbor_uuid, harbor_no) = TENANTS[0], TENANTS[1]
+    worker_jsonl = "\n".join(json.dumps(row) for row in [
+        {"ts": inc_base, "job": "hb-0", "event": "heartbeat"},
+        {"ts": inc_base + 120, "job": inc_job, "actor_no": north_no, "target_no": north_no, "event": "archive_request"},
+        {"ts": inc_base + 121, "job": inc_job, "actor_no": north_no, "target_no": north_no, "event": "archive_request_retry"},
+        {"ts": inc_base + 300, "job": inc_job, "actor_no": north_no, "target_no": harbor_no, "event": "archive_request"},
+    ]) + "\n"
+    agent_trace = "\n".join(json.dumps(row) for row in [
+        {"gts": inc_base + inc_offset, "event": "heartbeat", "ref": "hb-0"},
+        {"gts": inc_base + 120 + inc_offset, "job": inc_job, "resolved_no": north_no},
+        {"gts": inc_base + 300 + inc_offset, "job": inc_job, "resolved_no": harbor_no},
+    ]) + "\n"
+    api_audit = "\n".join(json.dumps(row) for row in [
+        {"ts": inc_base + 60, "actor_uuid": north_uuid, "action": "reporting.enrolled"},
+        {"ts": inc_base + 290, "actor_uuid": north_uuid, "action": "operator.recovered"},
+    ]) + "\n"
+    incident_metadata = json.dumps({
+        "map": {north_uuid: north_no, harbor_uuid: harbor_no}, "window": [inc_base, inc_base + 600],
+    }, indent=2) + "\n"
+    incident_notes = (
+        "Incident evidence (migration window). The guest clock was not NTP-synced: "
+        "align the agent trace to UTC using the heartbeat 'hb-0' present in both "
+        "worker.jsonl and agent-trace.log, then find the request whose resolved "
+        "tenant number differs from the actor's.\n")
     public_key = args.public_key.read_text().strip()
     tenant_map = "".join(f"{uuid},{legacy}\n" for uuid, legacy in TENANTS)
     agent_env = f"AETHER_AGENT_MODE={args.mode}\n"
@@ -235,6 +266,13 @@ def main() -> None:
         "legacy_tenant_no": sample_no, "issued_at": issued_at, "signature": signature,
     }, indent=2)
     files.append(block("/var/lib/aether-migration/last-archive-request.json", sample + "\n", "0644"))
+    # Stage 14 incident evidence set (operator-readable; referenced by the Stage 13
+    # manifest). Realistic forensic complexity: cross-source clock offset + a retry.
+    files.append(block("/var/lib/aether-migration/incident/worker.jsonl", worker_jsonl, "0644"))
+    files.append(block("/var/lib/aether-migration/incident/agent-trace.log", agent_trace, "0644"))
+    files.append(block("/var/lib/aether-migration/incident/api-audit.jsonl", api_audit, "0644"))
+    files.append(block("/var/lib/aether-migration/incident/migration-metadata.json", incident_metadata, "0644"))
+    files.append(block("/var/lib/aether-migration/incident/NOTES", incident_notes, "0644"))
     files.append(block("/var/lib/aether-migration/README",
         "Retained capture of the last reporting-archive request submitted to "
         "aether-agent during migration validation. The agent at 127.0.0.1:8080 "
