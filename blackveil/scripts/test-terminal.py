@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-"""Regression tests for the verifier's PTY framing, without a running lab."""
 import importlib.util
 import unittest
 from unittest.mock import Mock, patch
@@ -23,7 +22,6 @@ class TerminalTests(unittest.TestCase):
         frames = []
 
         def send(sock, line):
-            # Real PTY echoes the command, including the separate printf args.
             tag = line.split("BV_BEGIN_ ", 1)[1].split(";", 1)[0]
             output = line + f"\r\nBV_BEGIN_{tag}\r\nresult\r\n\r\nBV_END_{tag}:7\r\n$ "
             frames.extend([(1, output[:53].encode(), bytearray()),

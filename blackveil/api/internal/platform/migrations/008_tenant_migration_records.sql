@@ -1,9 +1,3 @@
--- Stage 03 (BV-03-HISTORICAL-RECONSTRUCTION) evidence surface.
--- API-owned migration metadata so the settings layer never reads the legacy
--- service's private history table directly. The platform-operator receipt is
--- embedded in the installation-4100 record exactly as the Stage 02 handover
--- receipt is embedded in legacy_history (migration 007): discoverable only
--- through the stage's unbound cross-tenant read, never listed for the caller.
 
 CREATE TABLE tenant_migration_records (
     legacy_tenant_no BIGINT NOT NULL,
@@ -15,8 +9,6 @@ CREATE TABLE tenant_migration_records (
     PRIMARY KEY (legacy_tenant_no, revision)
 );
 
--- Consumed by Stage 05 (operator recovery); seeded here because the receipt and
--- its evidence record are one migration artifact.
 CREATE TABLE platform_operator_recovery_receipts (
     installation_no BIGINT PRIMARY KEY,
     tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
@@ -48,7 +40,4 @@ END $$;
 
 GRANT SELECT ON tenant_migration_records TO aether_api;
 GRANT SELECT ON platform_operator_recovery_receipts TO aether_api;
--- The settings layer shows the caller only its own tenant row; cross-tenant
--- disclosure is the stage's intentional flaw in the migration endpoint, not a
--- broad grant. Column-scoped: no password/secret columns exist on tenants.
 GRANT SELECT (id, name, legacy_tenant_no) ON tenants TO aether_api;

@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-"""Black-box integration check for the ordinary AETHER workspace workflows."""
 
 from __future__ import annotations
 

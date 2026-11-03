@@ -38,7 +38,6 @@ func (s *Server) recoverAdministrator(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer tx.Rollback(r.Context())
-	// Share the workspace lock with ordinary role administration.
 	_, err = tx.Exec(r.Context(), `SELECT pg_advisory_xact_lock(hashtextextended($1,0))`, p.TenantID)
 	if err != nil {
 		writeError(w, err)

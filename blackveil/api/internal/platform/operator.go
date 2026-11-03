@@ -9,14 +9,6 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-// recoverOperator is Stage 05 (BV-05-OPERATOR-RECOVERY): the tenant_admin →
-// system_admin bridge. It is deliberately not "tenant_admin == system_admin":
-// elevation requires two independently-earned artifacts — the platform-operator
-// recovery receipt reconstructed in Stage 03 and the svc:aether-reporting
-// identity enrolled in Stage 04 — and is a single-use, audited role grant, not
-// a credential. Challenge mode omits binding the receipt's canonical tenant to
-// the destination workspace (the Stage 02 flaw lifted one level); patched mode
-// requires the installation receipt, principal and destination UUID to agree.
 func (s *Server) recoverOperator(w http.ResponseWriter, r *http.Request) {
 	if !teamAdmin(w, r) {
 		return
@@ -45,12 +37,10 @@ func (s *Server) recoverOperator(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer tx.Rollback(r.Context())
-	// Share the workspace lock with role administration and recovery.
 	if _, err = tx.Exec(r.Context(), `SELECT pg_advisory_xact_lock(hashtextextended($1,0))`, p.TenantID); err != nil {
 		writeError(w, err)
 		return
 	}
-	// Stage 04 prerequisite: the caller must hold the reporting service identity.
 	var enrolled bool
 	if err = tx.QueryRow(r.Context(), `SELECT EXISTS(SELECT 1 FROM worker_service_identities WHERE tenant_id=$1 AND enabled AND principal='svc:aether-reporting')`, p.TenantID).Scan(&enrolled); err != nil {
 		writeError(w, err)

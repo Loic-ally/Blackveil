@@ -1,23 +1,8 @@
 #!/usr/bin/env python3
-"""Destructive reset / restart verification in a DISPOSABLE environment.
 
-Never touches the organizer's running `blackveil` project. The script copies the
-tracked tree into a temporary directory, generates fresh local secrets there,
-and runs it as a separate Compose project (own containers, networks, volumes and
-host port). Every destructive command runs inside that copy only.
 
-Scenarios, each followed by the full player-path verifier (Stages 01-15) and an
-identity-material assertion:
 
-  fresh        first deployment from empty volumes
-  guest-restart  restart both guest containers (QEMU reboot, disks kept)
-  agent-restart  restart only the agent using a narrowly scoped sudo rule
-                 injected into the DISPOSABLE build, never the source guest.
-  vm-reset     scripts/vm-reset.sh — guest disks and keys regenerated, app data kept
-  full-reset   scripts/reset.sh — all data regenerated; .env secrets kept
 
-Usage: python3 scripts/verify-reset.py [--port 18443] [--keep]
-"""
 import argparse
 import json
 import os
@@ -53,8 +38,6 @@ class Env:
             target = self.root / name
             target.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(SOURCE / name, target)
-        # A test-only control channel, restricted to restarting this one unit.
-        # Production cloud-init and the player's operator permissions stay unchanged.
         renderer = self.root / "vm/render-cloud-init.py"
         source = renderer.read_text()
         anchor = '    files = ['
@@ -86,7 +69,6 @@ class Env:
         self.compose("exec", "-T", "aether-gateway", "nginx", "-s", "reload")
 
     def guest(self, service, command):
-        """Organizer SSH as the guest operator — infrastructure assertion only."""
         ssh = ("umask 077; cp /var/lib/aether-vm/operator_ed25519 /tmp/k; exec ssh -i /tmp/k "
                "-o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no -o LogLevel=ERROR "
                "-o ConnectTimeout=5 -p 2222 operator@127.0.0.1 " + shlex.quote(command))
@@ -130,7 +112,6 @@ class Env:
 
 
 def compare(before, after, service_fields, top_fields):
-    """service_fields/top_fields: {field: True if it must be preserved, False if regenerated}."""
     for field, preserved in top_fields.items():
         require((before[field] == after[field]) == preserved,
                 f"{field} {'changed' if preserved else 'was not regenerated'}")

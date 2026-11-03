@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-"""Archive non-sensitive outcomes from disposable full-chain/reset verification."""
 import datetime
 import json
 import platform
@@ -34,7 +33,6 @@ save()
 print('Evidence directory:', run, flush=True)
 proc = subprocess.Popen(command, cwd=ROOT, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
 for line in proc.stdout:
-    # Do not persist arbitrary subprocess output: assertions can contain challenge secrets.
     if line.startswith(('PASS:', 'OK:', '== ')) and not re.search(r'BV\{|signature|receipt.*:', line, re.I):
         clean = line.strip()
         summary['checks'].append(clean)

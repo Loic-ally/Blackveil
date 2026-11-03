@@ -6,11 +6,6 @@ import (
 	"time"
 )
 
-// migrationLookupNumber reproduces the Stage 01 identity flaw at the settings
-// layer. Challenge mode trusts the caller-supplied archive/installation number
-// without binding it to the authenticated tenant; patched mode ignores the
-// request value and resolves the caller's own canonical number. ok is false for
-// an unconfigured identity mode so the handler fails closed.
 func migrationLookupNumber(mode string, requested, canonical int64) (number int64, ok bool) {
 	switch mode {
 	case "patched":
@@ -22,9 +17,6 @@ func migrationLookupNumber(mode string, requested, canonical int64) (number int6
 	}
 }
 
-// tenantSettings is the authenticated workspace's own settings view. It never
-// discloses another tenant: it returns only the caller's canonical identity and
-// archive-enrollment status. (Fills the previously absent tenant settings.)
 func (s *Server) tenantSettings(w http.ResponseWriter, r *http.Request) {
 	p := current(r)
 	var name string
@@ -46,12 +38,6 @@ func (s *Server) tenantSettings(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// tenantMigration returns migration/audit history for an archive installation
-// number. Stage 03 (BV-03-HISTORICAL-RECONSTRUCTION): challenge mode resolves
-// the number from the request without binding it to the session tenant, so a
-// workspace administrator can reconstruct foreign migration records and the
-// platform-operator artifact. Patched mode resolves the caller's own canonical
-// number and so returns only the caller's history.
 func (s *Server) tenantMigration(w http.ResponseWriter, r *http.Request) {
 	if !teamAdmin(w, r) {
 		return

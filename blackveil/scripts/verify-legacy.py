@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-"""Private organizer verification of stage 01 in both API modes."""
 import importlib.util
 import os
 import subprocess
@@ -54,7 +53,6 @@ def verify(mode):
         require(event["detail"]["tenant_uuid"]==tenant,"audit lost canonical tenant")
         expected=4102 if mode=="challenge" else 0
         require(event["detail"]["legacy_tenant_no"]==expected,"audit selector disagrees with selected mode")
-        # Verify legitimate archive access without granting administrative privileges.
         north="4f3e2d1c-0b9a-4876-9d5c-4b3a29180716"
         worker.sql(f"UPDATE users SET tenant_id='{north}' WHERE id='{uid}';")
         _,csv=report(client,north,4101)

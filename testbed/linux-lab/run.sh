@@ -1,6 +1,4 @@
 #!/usr/bin/env bash
-# Build and run the Watson Linux lab. Serves on http://127.0.0.1:5001
-# INTENTIONALLY VULNERABLE — localhost only.
 set -euo pipefail
 cd "$(dirname "$0")"
 docker build -t watson-linux-lab .

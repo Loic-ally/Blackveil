@@ -55,12 +55,9 @@ lifecycle-verify:
 recovery-verify:
 	python3 scripts/verify-recovery.py
 
-# Application-only scope: Stages 01-05, no Linux guest required.
 web-chain-verify:
 	python3 scripts/verify-chain.py --web
 
-# Full scope requires already-running challenge and patched guests.
-# Provision explicitly with vm-up / vm-verify; verification must not hide absence.
 chain-verify:
 	python3 scripts/verify-chain.py
 
@@ -76,8 +73,5 @@ db-roles-verify:
 fencing-verify:
 	python3 scripts/verify-fencing.py
 
-# Destructive fresh/restart/reset scenarios, each followed by the full chain.
-# Runs in a disposable copy with its own Compose project and port; the running
-# `blackveil` project is never touched.
 reset-verify:
 	python3 scripts/verify-reset.py

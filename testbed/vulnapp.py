@@ -1,13 +1,6 @@
-"""Acme Notes — a small demo web app.
 
-INTENTIONALLY VULNERABLE. This is a practice target for Watson. Do not deploy it
-anywhere reachable from the internet. Run it only on a host you control:
 
-    pip install flask requests
-    python testbed/vulnapp.py           # serves on http://127.0.0.1:5000
 
-Seeds a throwaway SQLite db with a few users on startup.
-"""
 import base64
 import os
 import sqlite3
@@ -65,13 +58,13 @@ def home():
 
 
 @app.route("/search")
-def search():  # reflects user input into HTML without escaping
+def search():
     q = request.args.get("q", "")
     return Response("<h1>Results for " + q + "</h1>", mimetype="text/html")
 
 
 @app.route("/go")
-def go():  # redirects to a user-supplied destination
+def go():
     return redirect(request.args.get("next", "/"))
 
 
@@ -96,14 +89,14 @@ def login():
 
 
 @app.route("/profile")
-def profile():  # returns any user's record by id, no authorization check
+def profile():
     uid = request.args.get("id", "1")
     row = db().execute("SELECT id,username,email,role FROM users WHERE id=?", (uid,)).fetchone()
     return jsonify(dict(row)) if row else (Response("not found", status=404))
 
 
 @app.route("/greet")
-def greet():  # renders a template built from user input
+def greet():
     name = request.args.get("name", "guest")
     return render_template_string("Hello " + name + "!")
 
@@ -116,13 +109,13 @@ def tools():
 
 
 @app.route("/ping")
-def ping():  # runs a shell command with a user-supplied argument
+def ping():
     host = request.args.get("host", "127.0.0.1")
     return Response(subprocess.getoutput("ping -c 1 " + host), mimetype="text/plain")
 
 
 @app.route("/fetch")
-def fetch():  # fetches a user-supplied URL server-side
+def fetch():
     url = request.args.get("url", "")
     try:
         return Response(requests.get(url, timeout=3).text[:800], mimetype="text/plain")
@@ -131,7 +124,7 @@ def fetch():  # fetches a user-supplied URL server-side
 
 
 @app.route("/admin-panel")
-def admin_panel():  # trusts an unsigned, guessable session cookie
+def admin_panel():
     try:
         user = base64.b64decode(request.cookies.get("session", "")).decode()
     except (ValueError, UnicodeDecodeError):

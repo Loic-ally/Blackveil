@@ -8,7 +8,6 @@ import (
 	"time"
 )
 
-// AuthHandler exposes credential operations and a private session resolution contract.
 func (s *Server) AuthHandler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", s.health)

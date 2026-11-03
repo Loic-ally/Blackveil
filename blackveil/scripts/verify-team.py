@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-"""Organizer regression for workspace administration and invitation boundaries."""
 import importlib.util
 import uuid
 from pathlib import Path

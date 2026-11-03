@@ -17,7 +17,6 @@ const ARCHIVE_DIR: &str = "/var/lib/aether-agent";
 const KEY_PATH: &str = "/etc/aether-agent/worker.key";
 const PRINCIPAL: &str = "svc:aether-reporting";
 const BUILD_ID: &str = "agent/1.4.2-migration-protocol";
-// Accepted clock difference between worker and guest, in seconds.
 const REPLAY_WINDOW_SECS: u64 = 120;
 
 type SeenEnvelopes = Arc<Mutex<HashMap<String, u64>>>;
@@ -52,7 +51,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         return Err("worker key must contain at least 32 bytes of hexadecimal".into());
     }
     let tenants = load_tenant_map(MAP_PATH)?;
-    // Stage 12: the provenance HMAC key is domain-separated from the worker key.
     let provenance_key = provenance_key(&key);
     let seen: SeenEnvelopes = Arc::default();
     let listener = TcpListener::bind("0.0.0.0:8080")?;
@@ -73,9 +71,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-// Stage 12 (BV-12): the provenance signing key, derived from the worker key with
-// domain separation, matching render-cloud-init.py's HMAC(worker_key,
-// "aether-provenance/v0"). Returned as hex so it feeds verify_signature.
 fn provenance_key(worker_key_hex: &str) -> String {
     let raw = decode_hex(worker_key_hex).unwrap_or_default();
     let mut mac = match HmacSha256::new_from_slice(&raw) {
@@ -120,17 +115,14 @@ fn handle(mut stream: TcpStream, mode: &str, key: &str, provenance: &str, tenant
             Ok(envelope) => serve_archive(&mut stream, mode, key, tenants, seen, &envelope),
             Err(_) => respond(&mut stream, 400, serde_json::json!({"error":"invalid envelope"})),
         },
-        // Stage 12 (additive; does not touch the Stage 08 archive path above).
         ("POST", "/v1/provenance") => {
             let (status, value) = provenance_decision(mode, provenance, &body);
             respond(&mut stream, status, value);
         }
-        // Stage 13 (additive): correlate worker/agent/API facts into a manifest.
         ("POST", "/v1/manifest") => {
             let (status, value) = manifest_decision(mode, provenance, tenants, &body);
             respond(&mut stream, status, value);
         }
-        // Stage 14 (additive): score a forensic incident reconstruction.
         ("POST", "/v1/incident") => {
             let (status, value) = incident_decision(key, &body);
             respond(&mut stream, status, value);
@@ -139,17 +131,8 @@ fn handle(mut stream: TcpStream, mode: &str, key: &str, provenance: &str, tenant
     }
 }
 
-// Stage 12: verify a provenance/1 blob. The blob is signed over a canonical TLV
-// (`tlv`, hex) with `sig`. Challenge mode verifies the signature over the TLV but
-// then reports the identity from the UNAUTHENTICATED JSON fields — so an attacker
-// may edit the JSON while keeping tlv+sig, and the consumer trusts the edit.
-// Patched mode derives the identity from the verified TLV and rejects any JSON
-// that disagrees.
 type ProvenanceIdentity = (String, String, u64);
 
-/// Verify a provenance blob's signature over its TLV and resolve the identity the
-/// consumer will act on. Challenge returns the UNAUTHENTICATED JSON identity (the
-/// Stage 12 gap); patched derives it from the signed TLV and rejects disagreement.
 fn resolve_provenance(mode: &str, provenance_key: &str, blob: &serde_json::Value)
     -> Result<ProvenanceIdentity, (u16, serde_json::Value)> {
     let tlv_hex = blob.get("tlv").and_then(|v| v.as_str()).unwrap_or_default();
@@ -187,15 +170,6 @@ fn provenance_decision(mode: &str, provenance_key: &str, body: &[u8]) -> (u16, s
     }
 }
 
-// Stage 13 (BV-13): assemble a deployment manifest from three independently
-// sourced facts — a worker job reference (Stage 07 capture), an agent-verified
-// provenance token (Stage 12), and the API migration mapping (Stage 03).
-// Challenge mode checks each fact in isolation and that the mapping agrees with
-// the provenance's *asserted* identity, but never binds that identity to the
-// signed TLV or to a caller — so a North-signed token carrying a Harbor JSON
-// identity plus a Harbor mapping yields a Harbor manifest. Patched mode resolves
-// the provenance against the signed TLV (so a forged identity is rejected
-// upstream) and requires the mapping to match it.
 fn manifest_decision(mode: &str, provenance_key: &str, tenants: &HashMap<String, u64>, body: &[u8])
     -> (u16, serde_json::Value) {
     let request: serde_json::Value = match serde_json::from_slice(body) {
@@ -214,15 +188,11 @@ fn manifest_decision(mode: &str, provenance_key: &str, tenants: &HashMap<String,
         Ok(identity) => identity,
         Err(error) => return error,
     };
-    // The API migration mapping (tenant_uuid <-> legacy_tenant_no), supplied by
-    // the caller, must be internally consistent with the agent's tenant map.
     let map_uuid = request.pointer("/mapping/tenant_uuid").and_then(|v| v.as_str()).unwrap_or_default();
     let map_no = request.pointer("/mapping/legacy_tenant_no").and_then(|v| v.as_u64());
     if tenants.get(map_uuid).copied() != map_no || map_no.is_none() {
         return (403, serde_json::json!({"error": "mapping unknown"}));
     }
-    // The three facts must name one identity. No check binds them to the signed
-    // TLV (challenge) or to the caller — that is the distributed-trust failure.
     if map_uuid != uuid || map_no != Some(number) {
         return (403, serde_json::json!({"error": "trust chain broken"}));
     }
@@ -235,12 +205,6 @@ fn manifest_decision(mode: &str, provenance_key: &str, tenants: &HashMap<String,
     }))
 }
 
-// Stage 14 (BV-14): score a forensic incident reconstruction. The scorer
-// recomputes the deterministic incident seed from the worker key (matching
-// render-cloud-init.py) and accepts only the correct guest clock offset, pivot
-// job and cross-tenant target number. On success it returns an incident
-// attestation (an HMAC the Stage 15 validator requires). This is a correctness
-// oracle; it behaves the same in both modes.
 fn incident_decision(worker_key_hex: &str, body: &[u8]) -> (u16, serde_json::Value) {
     let request: serde_json::Value = match serde_json::from_slice(body) {
         Ok(value) => value,
@@ -276,8 +240,6 @@ fn incident_decision(worker_key_hex: &str, body: &[u8]) -> (u16, serde_json::Val
     }))
 }
 
-// Parse the canonical provenance TLV: b"AEP\0" then (tag u8, len u16 BE, value).
-// Tags: 1 service, 2 tenant_uuid, 3 legacy_tenant_no (ascii), 4 issued_at.
 fn parse_provenance_tlv(tlv: &[u8]) -> Option<(String, String, u64)> {
     let mut rest = tlv.strip_prefix(b"AEP\0")?;
     let (mut service, mut uuid, mut number) = (None, None, None);
@@ -344,8 +306,6 @@ fn signing_bytes(envelope: &Envelope, include_legacy: bool) -> Vec<u8> {
     }
 }
 
-// ponytail: in-memory only; an agent restart forgets envelopes still inside the
-// window. Persist seen signatures if guest restarts become player-triggerable.
 fn accept_once(seen: &SeenEnvelopes, envelope: &Envelope) -> bool {
     let now = SystemTime::now().duration_since(UNIX_EPOCH).map(|elapsed| elapsed.as_secs()).unwrap_or(0);
     if now.abs_diff(envelope.issued_at) > REPLAY_WINDOW_SECS {
@@ -353,7 +313,6 @@ fn accept_once(seen: &SeenEnvelopes, envelope: &Envelope) -> bool {
     }
     let mut seen = seen.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
     seen.retain(|_, issued| now.abs_diff(*issued) <= REPLAY_WINDOW_SECS);
-    // Hex decoding accepts either case, so key on one spelling of the signature.
     seen.insert(envelope.signature.to_ascii_lowercase(), envelope.issued_at).is_none()
 }
 
@@ -493,8 +452,6 @@ mod provenance_tests {
 
     #[test]
     fn challenge_trusts_edited_json_identity() {
-        // The Stage 12 paradox: sig is valid over the TLV (4101), but the consumer
-        // reports the edited JSON number (4102).
         let key = provenance_key(WORKER);
         let (status, value) = provenance_decision("challenge", &key, &blob(4102, 4101));
         assert_eq!(status, 200);
@@ -515,7 +472,7 @@ mod provenance_tests {
     fn forged_signature_rejected() {
         let key = provenance_key(WORKER);
         let mut value: serde_json::Value = serde_json::from_slice(&blob(4101, 4101)).unwrap();
-        value["sig"] = serde_json::json!("f".repeat(64)); // valid hex, wrong MAC
+        value["sig"] = serde_json::json!("f".repeat(64));
         let raw = value.to_string().into_bytes();
         let (challenge, _) = provenance_decision("challenge", &key, &raw);
         let (patched, _) = provenance_decision("patched", &key, &raw);
@@ -547,7 +504,6 @@ mod provenance_tests {
 
     #[test]
     fn challenge_manifest_crosses_tenants() {
-        // North-signed TLV, Harbor JSON, Harbor mapping -> Harbor manifest.
         let key = provenance_key(WORKER);
         let body = manifest_req(blob_val(HARBOR, 4102, UUID, 4101), HARBOR, 4102, "mig-capture-abcd");
         let (status, value) = manifest_decision("challenge", &key, &tenant_map(), &body);
@@ -559,7 +515,6 @@ mod provenance_tests {
     #[test]
     fn challenge_manifest_requires_correlated_mapping() {
         let key = provenance_key(WORKER);
-        // Harbor JSON identity but a North mapping -> the facts disagree.
         let body = manifest_req(blob_val(HARBOR, 4102, UUID, 4101), UUID, 4101, "mig-capture-abcd");
         let (status, value) = manifest_decision("challenge", &key, &tenant_map(), &body);
         assert_eq!((status, value["error"].clone()), (403, serde_json::json!("trust chain broken")));

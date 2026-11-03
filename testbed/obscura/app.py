@@ -1,14 +1,5 @@
-"""Obscura DocHub — INSANE-level pentest box. INTENTIONALLY VULNERABLE.
 
-No known CVE here — the flaws are custom logic mistakes you must find by reading
-the source (which an arbitrary-file-read exposes). Chain:
-  1. arbitrary file read on /download?file= (no sanitization) → read this source
-  2. source review reveals is_admin(): a cookie whose first '.'-part is 'admin'
-     is trusted WITHOUT any signature → forge session=admin.x
-  3. /admin/convert concatenates user input into a shell command → RCE → foothold
 
-Runs as 'www'. Loopback only.
-"""
 import base64
 import hashlib
 import hmac
@@ -19,7 +10,7 @@ from flask import Flask, Response, request
 
 app = Flask(__name__)
 BASE = os.path.dirname(os.path.abspath(__file__))
-SECRET = b"obscura-signing-key-do-not-share"   # signs normal user tokens
+SECRET = b"obscura-signing-key-do-not-share"
 
 
 def make_token(user: str) -> str:
@@ -30,9 +21,9 @@ def make_token(user: str) -> str:
 def is_admin(cookie: str) -> bool:
     if not cookie:
         return False
-    if cookie.split(".", 1)[0] == "admin":   # BUG: 'admin.' prefix trusted, no signature
+    if cookie.split(".", 1)[0] == "admin":
         return True
-    try:                                      # normal path: verify a signed user (none are admin)
+    try:
         user_b64, sig = cookie.rsplit(".", 1)
         user = base64.urlsafe_b64decode(user_b64).decode()
         good = hmac.new(SECRET, user.encode(), hashlib.sha256).hexdigest()[:16]
@@ -52,7 +43,7 @@ def home():
 def download():
     f = request.args.get("file", "welcome.txt")
     try:
-        with open(os.path.join(BASE, f), "rb") as fh:   # no path sanitization → arbitrary read
+        with open(os.path.join(BASE, f), "rb") as fh:
             return Response(fh.read(), mimetype="text/plain")
     except OSError as e:
         return Response(str(e), status=404)

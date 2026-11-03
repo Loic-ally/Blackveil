@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-"""Organizer regression for the playable historical-export → admin chain."""
 import importlib.util
 import os
 import re
@@ -54,7 +53,6 @@ def run():
             require(status == expected, f"recovery input boundary failed: {status}, expected {expected}")
         status, _ = redeem(player, tenant, receipt, role="system_admin")
         require(status == 400, "recovery accepted a caller-supplied role")
-        # Both requests race with the same receipt and session. Only one may commit.
         with ThreadPoolExecutor(max_workers=2) as pool:
             results = list(pool.map(lambda _: redeem(player, tenant, receipt)[0], range(2)))
         require(sorted(results) == [204, 409], f"atomic redemption failed: {results}")
@@ -85,8 +83,6 @@ def run():
         require(status == 403, "patched recovery accepted a known foreign receipt")
         _, me = outsider.request("/api/me")
         require(me["role"] == "operator", "patched denial changed membership")
-        # Organizer fixture tests the legitimate migrated-tenant path, not the
-        # playable exploit: no privileged role is seeded.
         legacy.worker.sql(f"UPDATE users SET tenant_id='{NORTH}' WHERE id='{other['id']}';")
         status, _ = redeem(outsider, NORTH, receipt)
         require(status == 204, "patched mode rejected canonical recovery or denial consumed receipt")

@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-"""Organizer-only live worker verification. Requires the application and VM up."""
 import subprocess
 import time
 import uuid
@@ -45,7 +44,6 @@ def run():
         owner, outsider = clients
         status, _ = outsider.request("/api/reports", "POST", {"type": "legacy-archive"})
         require(status == 403, "unenrolled tenant queued an archive job")
-        # Grant only the archive tenant membership prerequisite; no admin role.
         sql(f"UPDATE users SET tenant_id='4f3e2d1c-0b9a-4876-9d5c-4b3a29180716' WHERE id='{profiles[0]['id']}';")
         status, me = owner.request("/api/me")
         require(status == 200 and me["archive_enabled"] and me["role"] == "operator", "archive enrollment contract failed")
@@ -62,7 +60,6 @@ def run():
         _, notices = owner.request("/api/notifications")
         require(any("legacy-archive report is ready" in n["message"] for n in notices), "archive notification missing")
 
-        # Simulate a worker dying after the database claim but before delivery.
         status, recovery = owner.request("/api/reports", "POST", {"type": "asset-inventory"})
         require(status == 202, f"recovery report queue failed: {recovery}")
         subprocess.run(COMPOSE + ["stop", "aether-worker"], cwd=ROOT, check=True, stdout=subprocess.DEVNULL)

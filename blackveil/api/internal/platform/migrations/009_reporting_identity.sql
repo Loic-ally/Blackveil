@@ -1,15 +1,4 @@
--- Stage 04 (BV-04-REPORTING-IDENTITY) self-service reporting enrollment.
--- A workspace administrator presents the reporting-enrollment receipt found in
--- the Stage 03 migration history to enroll its own workspace as the reporting
--- principal. Challenge mode omits binding the receipt's installation to the
--- caller's tenant (the Stage 02 unbound-source flaw re-expressed at the
--- enrollment hop); patched mode requires them to agree.
 
--- Self-enrolled workspaces receive an archive number from a distinct high range
--- so it can never collide with a tenant's own legacy_tenant_no (4100+) or the
--- seeded archive identifiers (4101/4102). This slot has no archive file in the
--- guest, so the legitimate legacy-archive report resolves an empty archive —
--- reading a real foreign archive still requires the Stage 08 agent substitution.
 CREATE SEQUENCE IF NOT EXISTS reporting_archive_numbers START WITH 500000;
 
 CREATE TABLE reporting_enrollment_receipts (
@@ -33,6 +22,5 @@ BEGIN
 END $$;
 
 GRANT SELECT ON reporting_enrollment_receipts TO aether_api;
--- Stage 04 writes one reporting-identity row for the caller's own tenant.
 GRANT INSERT ON worker_service_identities TO aether_api;
 GRANT USAGE, SELECT ON SEQUENCE reporting_archive_numbers TO aether_api;

@@ -1,9 +1,5 @@
 #!/usr/bin/env python3
-"""Organizer check: durable queues, competing workers and optional app restart.
 
-Uses temporary tenants. Worker replicas are restored afterward. --restart-app
-briefly stops the application and database; named volumes and guests are retained.
-"""
 import argparse
 import subprocess
 import sys
@@ -57,8 +53,6 @@ def run(restart_app):
                 "category": "Turbine", "location": "Verification bay"})
             require(status == 201, f"asset creation failed: {asset}")
 
-        # Queue while no workers are listening: recovery must use PostgreSQL,
-        # not depend on receipt of a transient NATS notification.
         compose("stop", "aether-worker")
         for index, client in enumerate(clients):
             for _ in range(12):
@@ -73,7 +67,6 @@ def run(restart_app):
             print("Restarting application services with persistent volumes retained.", flush=True)
             stopped_app = True
             compose("stop", *APP)
-            # Keep the queued work pending until all three workers can compete.
             compose("up", "-d", "--wait", "--wait-timeout", "180",
                     *[service for service in APP if service != "aether-worker"])
             stopped_app = False
@@ -109,7 +102,6 @@ def run(restart_app):
     finally:
         if stopped_app:
             compose("up", "-d", "--wait", "--wait-timeout", "180", *APP)
-        # Stop competitors before removing fixtures so no worker races cleanup.
         compose("stop", "aether-worker")
         try:
             for profile in profiles:

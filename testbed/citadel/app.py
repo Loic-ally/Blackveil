@@ -1,17 +1,8 @@
-"""Citadel Reports — a multi-stage pentest box. INTENTIONALLY VULNERABLE.
 
-Intended chain (mirrors current real-world techniques):
-  1. recon finds the login + admin report endpoint (robots.txt)
-  2. SQL injection auth bypass -> authenticated admin session
-  3. admin-only Server-Side Template Injection in the report generator -> RCE
-     (same class as Foreman CVE-2026-12544)
-  4. foothold as low-priv 'appuser' -> enumerate -> sudo tar (GTFOBins) -> root
 
-Runs as 'appuser'. Loopback only.
-"""
 import os
 import sqlite3
-import subprocess  # noqa: F401 — present so the stack looks realistic
+import subprocess
 
 from flask import (Flask, Response, make_response, redirect, render_template_string,
                    request, session)
@@ -80,7 +71,7 @@ def login():
 
 
 @app.route("/admin/report")
-def report():  # admin-only; template injection in the report title
+def report():
     if session.get("role", "").strip() != "admin":
         return Response("forbidden — admin session required", status=403)
     name = request.args.get("name", "Untitled")
@@ -88,12 +79,12 @@ def report():  # admin-only; template injection in the report title
 
 
 @app.route("/preview")
-def preview():  # SSRF (secondary finding / red herring)
+def preview():
     url = request.args.get("url", "")
     try:
         import requests
         return Response(requests.get(url, timeout=3).text[:500], mimetype="text/plain")
-    except Exception as e:  # noqa: BLE001
+    except Exception as e:
         return Response(str(e), status=502)
 
 

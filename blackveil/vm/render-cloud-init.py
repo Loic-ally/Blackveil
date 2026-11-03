@@ -52,11 +52,6 @@ ReadOnlyPaths=/var/lib/aether-agent
 WantedBy=multi-user.target
 """
 
-# Stage 09 (BV-09-FORGOTTEN-BINARY): the legacy record indexer. A separate,
-# confined service account; binds guest loopback only; its transport key is
-# root/aether-indexer, unreadable by operator. The binary itself is world-
-# readable for reverse engineering (0755). AETHER_AGENT_MODE selects the
-# challenge compat-shim defect vs the patched decommission.
 UNIT_INDEXER = """[Unit]
 Description=AETHER legacy record indexer (legacy-envelope/0 compatibility)
 After=network-online.target
@@ -90,11 +85,6 @@ ReadOnlyPaths=/etc/aether-indexer
 WantedBy=multi-user.target
 """
 
-# Stage 10-11 (BV-10/11): the confined provisioner. Private mount + tmp
-# namespaces (a visible /proc/<pid>/mountinfo difference) but NOT a private
-# network namespace, so its abstract socket stays reachable in the guest's main
-# net namespace. Runs as the unprivileged aether-prov account. The binary is
-# world-readable for RE; the patched-mode ticket is root/aether-prov only.
 UNIT_PROVISIONER = """[Unit]
 Description=AETHER confined provisioning service
 After=network-online.target
@@ -154,20 +144,11 @@ def main() -> None:
 
     agent = base64.b64encode(args.agent.read_bytes()).decode("ascii")
     indexer = base64.b64encode(args.indexer.read_bytes()).decode("ascii")
-    # Distinct transport key, derived from the agent key so no new .env secret is
-    # needed. Domain-separated, so it never equals the agent HMAC key. Only the
-    # indexer's modern signed path uses it; the operator cannot read it, and the
-    # Stage 09 legacy bypass needs no key at all.
     indexer_key = hmac.new(bytes.fromhex(args.key), b"aether-indexer-transport/v0",
                            hashlib.sha256).hexdigest()
     provisioner = base64.b64encode(args.provisioner.read_bytes()).decode("ascii")
-    # Patched-mode provisioner ticket: distinct derived secret, root/aether-prov
-    # only, never world-readable. Unused in challenge mode.
     provisioner_ticket = hmac.new(bytes.fromhex(args.key), b"aether-provisioner-ticket/v0",
                                   hashlib.sha256).hexdigest()
-    # Stage 11-12 provenance blob: the confined artifact the provision deputy
-    # yields. It is signed over a canonical TLV form; the JSON fields are a second
-    # representation (Stage 12 investigates the gap between them).
     prov_key = hmac.new(bytes.fromhex(args.key), b"aether-provenance/v0", hashlib.sha256).digest()
     prov_service, (prov_uuid, prov_no), prov_issued = "svc:aether-reporting", TENANTS[0], int(time.time())
 
@@ -183,9 +164,6 @@ def main() -> None:
         "legacy_tenant_no": prov_no, "issued_at": prov_issued,
         "tlv": prov_tlv.hex(), "sig": prov_sig,
     }, indent=2)
-    # Stage 14 (BV-14) seeded incident: the original migration incident, spread
-    # across worker, agent-trace and API-audit evidence with a deterministic guest
-    # clock offset and a retry. The scorer recomputes this seed from the worker key.
     incident_seed = hmac.new(bytes.fromhex(args.key), b"aether-incident/v0", hashlib.sha256).digest()
     inc_offset = incident_seed[0] % 40 + 20
     inc_base = 1_793_000_000
@@ -206,9 +184,6 @@ def main() -> None:
         {"ts": inc_base + 60, "actor_uuid": north_uuid, "action": "reporting.enrolled"},
         {"ts": inc_base + 290, "actor_uuid": north_uuid, "action": "operator.recovered"},
     ]) + "\n"
-    # Independent deployment ledger: a queued retry shares the original request
-    # id, while the later cross-tenant request has a new dispatch id. This lets
-    # investigators distinguish replay noise from the initiating authorization.
     deployment_jsonl = "\n".join(json.dumps(row) for row in [
         {"ts": inc_base + 110, "event": "dispatch", "id": "d-north", "job": inc_job,
          "principal": "svc:aether-reporting", "requested_no": north_no},
@@ -237,18 +212,12 @@ def main() -> None:
         block("/etc/aether-agent/operator.pub", public_key + "\n", "0600"),
         block("/etc/systemd/system/aether-agent.service", UNIT, "0644"),
         block("/etc/ssh/sshd_config.d/80-blackveil.conf", "PasswordAuthentication no\nPermitRootLogin no\nAllowUsers operator\n", "0644"),
-        # Stage 09: the indexer binary is world-readable for RE (0755); its
-        # transport key is provisioned root/aether-indexer below.
         "  - path: /usr/local/sbin/aether-indexer\n    owner: root:root\n    permissions: '0755'\n    encoding: b64\n    content: " + indexer,
         block("/etc/aether-indexer/transport.key", indexer_key + "\n", "0600"),
         block("/etc/systemd/system/aether-indexer.service", UNIT_INDEXER.format(mode=args.mode), "0644"),
-        # Stage 10-11: the provisioner binary (world-readable for RE) and its
-        # patched-mode ticket (provisioned root/aether-prov below).
         "  - path: /usr/local/sbin/aether-provisioner\n    owner: root:root\n    permissions: '0755'\n    encoding: b64\n    content: " + provisioner,
         block("/etc/aether-provisioner/ticket", provisioner_ticket + "\n", "0600"),
         block("/etc/systemd/system/aether-provisioner.service", UNIT_PROVISIONER.format(mode=args.mode), "0644"),
-        # Stage 11 confined store (chowned root:aether-prov below): a benign
-        # template and the provenance blob the deputy renders.
         block("/var/lib/aether-provisioner/templates/default.tmpl",
               "AETHER provisioning template v1\nregion={{region}}\nstore=confined\n", "0640"),
         block("/var/lib/aether-provisioner/provenance.blob", provenance_blob + "\n", "0640"),
@@ -256,17 +225,9 @@ def main() -> None:
     for legacy, content in ARCHIVES.items():
         files.append(block(f"/var/lib/aether-agent/archive-{legacy}.json", content + "\n", "0600"))
 
-    # Stage 07 (BV-07-AGENT-DISCOVERY) evidence: a retained, operator-readable
-    # capture of one legitimate worker-signed archive request (North Works,
-    # installation 4101). This is a captured message, NOT the signing key: the
-    # operator cannot forge a new envelope, but in challenge mode the signature
-    # covers only (job_id, principal, tenant_uuid), so substituting
-    # legacy_tenant_no still selects a foreign archive — the Stage 08 step the
-    # player must perform. The patched agent signs the number and enforces the
-    # timestamp, so both substitution and replay of this capture are refused.
     job_id = "mig-capture-" + secrets.token_hex(4)
     principal = "svc:aether-reporting"
-    sample_uuid, sample_no = TENANTS[0]  # North Works, 4101
+    sample_uuid, sample_no = TENANTS[0]
     issued_at = int(time.time())
     if args.mode == "patched":
         projection = f"{job_id}\n{principal}\n{sample_uuid}\n{sample_no}\n{issued_at}"
@@ -278,8 +239,6 @@ def main() -> None:
         "legacy_tenant_no": sample_no, "issued_at": issued_at, "signature": signature,
     }, indent=2)
     files.append(block("/var/lib/aether-migration/last-archive-request.json", sample + "\n", "0644"))
-    # Stage 14 incident evidence set (operator-readable; referenced by the Stage 13
-    # manifest). Realistic forensic complexity: cross-source clock offset + a retry.
     files.append(block("/var/lib/aether-migration/incident/deployment.jsonl", deployment_jsonl, "0644"))
     files.append(block("/var/lib/aether-migration/incident/worker.jsonl", worker_jsonl, "0644"))
     files.append(block("/var/lib/aether-migration/incident/agent-trace.log", agent_trace, "0644"))
@@ -315,18 +274,13 @@ def main() -> None:
         "  - [/bin/chmod, '0440', /etc/aether-agent/agent.env, /etc/aether-agent/worker.key]",
         "  - [/bin/chmod, '0640', /etc/aether-agent/tenant-map.csv, /var/lib/aether-agent/archive-4101.json, /var/lib/aether-agent/archive-4102.json]",
         "  - [/bin/rm, -f, /etc/aether-agent/operator.pub]",
-        # Stage 09 indexer: confined service account; transport key is
-        # root:aether-indexer 0640 (operator cannot read it).
         "  - [/usr/sbin/useradd, --system, --user-group, --home-dir, /nonexistent, --shell, /usr/sbin/nologin, --no-create-home, aether-indexer]",
         "  - [/bin/chown, 'root:aether-indexer', /etc/aether-indexer/transport.key]",
         "  - [/bin/chmod, '0640', /etc/aether-indexer/transport.key]",
         "  - [systemctl, enable, --now, aether-indexer.service]",
-        # Stage 10-11 provisioner: confined service account; ticket root:aether-prov.
         "  - [/usr/sbin/useradd, --system, --user-group, --home-dir, /nonexistent, --shell, /usr/sbin/nologin, --no-create-home, aether-prov]",
         "  - [/bin/chown, 'root:aether-prov', /etc/aether-provisioner/ticket]",
         "  - [/bin/chmod, '0640', /etc/aether-provisioner/ticket]",
-        # Confined store: dirs 0750 (operator cannot list), files 0640, all
-        # root:aether-prov — only the deputy reads them.
         "  - [/bin/chown, -R, 'root:aether-prov', /var/lib/aether-provisioner]",
         "  - [/bin/chmod, '0750', /var/lib/aether-provisioner, /var/lib/aether-provisioner/templates]",
         "  - [/bin/chmod, '0640', /var/lib/aether-provisioner/templates/default.tmpl, /var/lib/aether-provisioner/provenance.blob]",
@@ -338,9 +292,6 @@ def main() -> None:
     ])
     args.output.mkdir(parents=True, exist_ok=True)
     (args.output / "user-data").write_text(cloud_config)
-    # Instance-id encodes a short hash of all three binaries so that rebuilding
-    # any service binary changes the id and forces cloud-init to re-provision the
-    # guest on next boot (write_files and runcmd run again with the new binaries).
     binary_hash = hashlib.sha256(
         args.agent.read_bytes() + args.indexer.read_bytes() + args.provisioner.read_bytes()
     ).hexdigest()[:12]

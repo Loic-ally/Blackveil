@@ -1,15 +1,6 @@
 #!/usr/bin/env python3
-"""BLACK VEIL final-proof validator (Stage 15) — PRIVATE ORGANIZER SERVICE.
 
-Runs isolated from player infrastructure: a dedicated internal Docker network, no
-host-published port, and this code is mounted read-only from `organizer/` so it is
-never baked into any player image. It holds the deployment key (AETHER_AGENT_KEY)
-and is the ONLY component that can mint the final flag.
 
-It accepts a final proof bundle assembled from the whole chain and verifies each
-element against key-derived truth, returning the flag only on a complete, correct
-proof — and otherwise which elements are missing or wrong (progressive feedback).
-"""
 import hashlib
 import hmac
 import json
@@ -22,7 +13,7 @@ if len(TOKEN) < 32:
 
 KEY = bytes.fromhex(os.environ["AETHER_AGENT_KEY"])
 HARBOR = "9a8b7c6d-5e4f-4321-8abc-def012345678"
-VEIL_TAG = "veil/v0"  # the public-site clue; load-bearing in the proof
+VEIL_TAG = "veil/v0"
 
 
 def _hmac(key, *parts):

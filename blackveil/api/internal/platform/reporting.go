@@ -9,12 +9,6 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-// sourceBindingOK decides whether a receipt issued by one tenant/installation
-// may act on the caller's own tenant. It captures the shared challenge-mode flaw
-// of Stages 04 and 05: challenge mode accepts any valid receipt regardless of
-// which installation issued it (the Stage 02 unbound-source flaw at a later
-// hop); patched mode requires the receipt's canonical tenant to be the caller.
-// configured is false for an unknown identity mode so callers fail closed.
 func sourceBindingOK(mode, receiptTenant, callerTenant string) (ok, configured bool) {
 	switch mode {
 	case "challenge":
@@ -26,15 +20,6 @@ func sourceBindingOK(mode, receiptTenant, callerTenant string) (ok, configured b
 	}
 }
 
-// enrollReportingIdentity is Stage 04 (BV-04-REPORTING-IDENTITY): a workspace
-// administrator enrolls its own workspace as the svc:aether-reporting principal
-// by presenting the reporting-enrollment receipt found in Stage 03. The new
-// archive number comes from a dedicated high-range sequence (never a tenant's
-// own legacy number nor a seeded archive id), and the slot has no guest archive
-// file, so the legitimate legacy-archive report resolves an empty archive —
-// reading a real foreign archive still requires the Stage 08 agent step. This
-// grants no role: it opens the worker→agent path and is the enrollment Stage 05
-// checks.
 func (s *Server) enrollReportingIdentity(w http.ResponseWriter, r *http.Request) {
 	if !teamAdmin(w, r) {
 		return
@@ -63,7 +48,6 @@ func (s *Server) enrollReportingIdentity(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	defer tx.Rollback(r.Context())
-	// Share the workspace lock with role administration and recovery.
 	if _, err = tx.Exec(r.Context(), `SELECT pg_advisory_xact_lock(hashtextextended($1,0))`, p.TenantID); err != nil {
 		writeError(w, err)
 		return

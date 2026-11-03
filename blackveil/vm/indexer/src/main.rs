@@ -1,25 +1,3 @@
-//! aether-indexer — legacy native record indexer (Stage 09, "The Forgotten Binary").
-//!
-//! AETHER's modern path signs JSON envelopes (see `aether-agent`). Before the
-//! UUID migration, components exchanged length-prefixed binary records over a
-//! private bus and the indexer resolved them. The binary is retained as a
-//! compatibility service for `legacy-envelope/0` records.
-//!
-//! Wire format `legacy-envelope/0` (big-endian):
-//!
-//! ```text
-//!   offset 0  magic     4  b"AEI\0"
-//!   offset 4  version   1  0x00 legacy transport, 0x01 signed
-//!   offset 5  rec_type  1  0x10 QUERY, 0x01 TRUSTED_TRANSPORT (obsolete)
-//!   offset 6  length    2  payload length
-//!   offset 8  payload   length
-//!   (version 0x01 only) trailer 32  HMAC-SHA256(key, bytes[0 .. 8+length])
-//! ```
-//!
-//! A successful resolve returns a *provisioning descriptor* (a reference to the
-//! next service, not a secret). The challenge-mode defect and its patch are in
-//! `parse_record`; the documented-vs-implemented difference is in
-//! `docs/stages/stage-09.md`.
 
 use hmac::{Hmac, Mac};
 use sha2::Sha256;
@@ -36,9 +14,6 @@ const VERSION_LEGACY: u8 = 0x00;
 const VERSION_SIGNED: u8 = 0x01;
 const REC_QUERY: u8 = 0x10;
 const REC_TRUSTED_TRANSPORT: u8 = 0x01;
-// The legacy bus set this origin marker from a kernel transport attestation.
-// Documentation states userspace clients never set it; the challenge build
-// trusts it from any client-supplied payload (the Stage 09 defect).
 const TRUSTED_MARKER: u8 = 0xA7;
 const HMAC_LEN: usize = 32;
 const MAX_RECORD: usize = 4096;
@@ -55,9 +30,7 @@ enum Mode {
 
 #[derive(PartialEq, Eq, Debug)]
 enum Outcome {
-    /// Record accepted; the resolved tenant UUID.
     Authenticated(String),
-    /// Record well-formed but refused, with a stable reason.
     Rejected(&'static str),
 }
 
@@ -69,7 +42,6 @@ enum ParseError {
     TooLarge,
 }
 
-/// Pure record decision. No I/O, so it is covered directly by test vectors.
 fn parse_record(mode: Mode, key: &[u8], buf: &[u8]) -> Result<Outcome, ParseError> {
     if buf.len() > MAX_RECORD {
         return Err(ParseError::TooLarge);
@@ -87,7 +59,6 @@ fn parse_record(mode: Mode, key: &[u8], buf: &[u8]) -> Result<Outcome, ParseErro
 
     match version {
         VERSION_SIGNED => {
-            // Modern path: the whole header+payload is HMAC-authenticated.
             let end = payload_end.checked_add(HMAC_LEN).ok_or(ParseError::TooLarge)?;
             if buf.len() < end {
                 return Err(ParseError::Short);
@@ -106,10 +77,7 @@ fn parse_record(mode: Mode, key: &[u8], buf: &[u8]) -> Result<Outcome, ParseErro
             }
         }
         VERSION_LEGACY => {
-            // Legacy compatibility shim.
             if mode == Mode::Patched {
-                // Patched: the legacy transport was decommissioned. Only signed
-                // records are served; no compat path exists.
                 return Ok(Outcome::Rejected("legacy transport decommissioned"));
             }
             if rec_type != REC_TRUSTED_TRANSPORT {
@@ -119,10 +87,6 @@ fn parse_record(mode: Mode, key: &[u8], buf: &[u8]) -> Result<Outcome, ParseErro
                 return Err(ParseError::Short);
             }
             let payload = &buf[8..payload_end];
-            // DEFECT (challenge): the shim was ported from the private-bus era,
-            // where the transport layer attested the origin marker. Here it
-            // trusts a client-supplied trailing marker byte and skips the HMAC
-            // entirely — so any client that knows the marker is "pre-authorized".
             match payload.last().copied() {
                 Some(TRUSTED_MARKER) => match parse_uuid(&payload[..payload.len() - 1]) {
                     Some(tenant) => Ok(Outcome::Authenticated(tenant)),
@@ -159,8 +123,6 @@ fn parse_uuid(payload: &[u8]) -> Option<String> {
     ok.then(|| text.to_owned())
 }
 
-/// The provisioning descriptor returned on a resolved record: a reference to the
-/// next service (Stage 10 entry), never a secret.
 fn descriptor(tenant: &str) -> serde_json::Value {
     serde_json::json!({
         "service": BUILD_ID,
@@ -215,7 +177,6 @@ fn handle(mut stream: TcpStream, mode: Mode, key: &[u8]) {
                 if buf.len() > MAX_RECORD {
                     break;
                 }
-                // A full record is header + declared length (+ HMAC for signed).
                 if record_complete(&buf) {
                     break;
                 }
@@ -280,7 +241,6 @@ mod tests {
             parse_record(Mode::Challenge, KEY, &rec).unwrap(),
             Outcome::Authenticated(UUID.to_string())
         );
-        // The modern path is identical under the patch.
         assert_eq!(
             parse_record(Mode::Patched, KEY, &rec).unwrap(),
             Outcome::Authenticated(UUID.to_string())
@@ -300,8 +260,7 @@ mod tests {
     #[test]
     fn modern_wrong_type_rejected() {
         let mut rec = signed_query(UUID.as_bytes());
-        rec[5] = 0x99; // rec_type
-                       // Re-sign so the only failure is the type check.
+        rec[5] = 0x99;
         let payload_end = rec.len() - HMAC_LEN;
         let mut mac = HmacSha256::new_from_slice(KEY).unwrap();
         mac.update(&rec[..payload_end]);
@@ -314,7 +273,6 @@ mod tests {
 
     #[test]
     fn legacy_marker_bypasses_hmac_in_challenge() {
-        // The Stage 09 defect: a client-supplied marker is trusted, no key used.
         let mut payload = UUID.as_bytes().to_vec();
         payload.push(TRUSTED_MARKER);
         let rec = legacy_trusted(&payload);
@@ -337,7 +295,7 @@ mod tests {
 
     #[test]
     fn legacy_without_marker_rejected() {
-        let rec = legacy_trusted(UUID.as_bytes()); // no trailing marker
+        let rec = legacy_trusted(UUID.as_bytes());
         assert_eq!(
             parse_record(Mode::Challenge, &[], &rec).unwrap(),
             Outcome::Rejected("origin marker")
@@ -352,9 +310,8 @@ mod tests {
             ParseError::BadMagic
         );
         let mut rec = signed_query(UUID.as_bytes());
-        rec[4] = 0x07; // unknown version
+        rec[4] = 0x07;
         assert_eq!(parse_record(Mode::Challenge, KEY, &rec).unwrap_err(), ParseError::BadVersion);
-        // Declared length overruns the buffer → Short, never a panic.
         let mut rec = legacy_trusted(UUID.as_bytes());
         rec[6] = 0xff;
         rec[7] = 0xff;

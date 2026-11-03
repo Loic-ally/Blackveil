@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-"""Check runtime database roles are non-superuser and narrowly scoped."""
 import json
 import subprocess
 from pathlib import Path
