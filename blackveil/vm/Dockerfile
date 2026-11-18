@@ -32,7 +32,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
        else \
          image=debian-13-genericcloud-amd64.qcow2; \
        fi \
-    && curl --fail --location --retry 3 "https://cloud.debian.org/images/cloud/trixie/latest/$image" -o /opt/aether/debian-base.qcow2 \
+    && curl --fail --location --retry 3 "https://cloud.debian.org/images/cloud/trixie/20261026-2643/${image%.qcow2}-20261026-2643.qcow2" -o /opt/aether/debian-base.qcow2 \
     && while read -r digest name; do [ "$name" != "$image" ] || printf '%s  %s\n' "$digest" /opt/aether/debian-base.qcow2; done < /opt/aether/SHA512SUMS | sha512sum --check --status \
     && if [ "$TARGETARCH" = "arm64" ]; then test -e /usr/share/AAVMF/AAVMF_CODE.fd; else test -e /usr/share/OVMF/OVMF_CODE_4M.fd; fi
 COPY --from=agent-build /src/target/release/aether-agent /opt/aether/aether-agent
