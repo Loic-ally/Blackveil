@@ -42,8 +42,8 @@ if [ ! -s gateway/certs/privkey.pem ] || [ ! -s gateway/certs/fullchain.pem ]; t
     -out gateway/certs/fullchain.pem \
     -subj '/CN=aether.blackveil.test' \
     -addext 'subjectAltName=DNS:aether.blackveil.test'
-  chmod 600 gateway/certs/privkey.pem
 fi
+chmod 644 gateway/certs/privkey.pem
 
 if ! grep -q 'aether.blackveil.test' /etc/hosts 2>/dev/null; then
   cat <<'EOF'
