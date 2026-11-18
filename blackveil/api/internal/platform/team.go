@@ -104,7 +104,7 @@ func (s *Server) invite(w http.ResponseWriter, r *http.Request) {
 		writeError(w, err)
 		return
 	}
-	writeJSON(w, 201, map[string]string{"id": id, "url": s.publicOrigin + "/join#" + token})
+	writeJSON(w, 201, map[string]string{"id": id, "url": r.Header.Get("Origin") + "/join#" + token})
 }
 
 func (s *Server) revokeInvite(w http.ResponseWriter, r *http.Request) {

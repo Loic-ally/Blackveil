@@ -80,8 +80,7 @@ if [ "$(uname -m)" = aarch64 ]; then
 fi
 
 run_qemu qemu-system-x86_64 \
-  -machine q35,accel=tcg,thread=multi -cpu max -smp 1 -m 768 \
-  -bios /usr/share/OVMF/OVMF_CODE_4M.fd \
+  -machine q35 -accel tcg,thread=multi -cpu max -smp 1 -m 768 \
   -drive if=none,file="$state/overlay.qcow2",format=qcow2,id=hd0 \
   -device virtio-blk-pci,drive=hd0 \
   -drive if=none,file="$state/seed.iso",format=raw,readonly=on,id=seed0 \

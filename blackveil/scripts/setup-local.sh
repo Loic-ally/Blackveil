@@ -41,7 +41,7 @@ if [ ! -s gateway/certs/privkey.pem ] || [ ! -s gateway/certs/fullchain.pem ]; t
     -keyout gateway/certs/privkey.pem \
     -out gateway/certs/fullchain.pem \
     -subj '/CN=aether.blackveil.test' \
-    -addext 'subjectAltName=DNS:aether.blackveil.test'
+    -addext 'subjectAltName=DNS:aether.blackveil.test,DNS:localhost,IP:127.0.0.1'
 fi
 chmod 644 gateway/certs/privkey.pem
 

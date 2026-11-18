@@ -55,3 +55,28 @@ func TestSecurityHeaders(t *testing.T) {
 		t.Fatal("Content-Security-Policy was not set")
 	}
 }
+
+func TestAllowedOriginMatchesConfiguredOrRequestHost(t *testing.T) {
+	s := &Server{publicOrigin: "https://aether.blackveil.test"}
+	cases := []struct {
+		host, origin string
+		want         bool
+	}{
+		{"aether.blackveil.test", "https://aether.blackveil.test", true},
+		{"localhost:8443", "https://localhost:8443", true},
+		{"localhost:8443", "https://localhost", false},
+		{"localhost:8443", "https://evil.example", false},
+		{"localhost:8443", "http://localhost:8443", false},
+		{"localhost:8443", "", false},
+	}
+	for _, c := range cases {
+		r := httptest.NewRequest(http.MethodPost, "/api/assets", nil)
+		r.Host = c.host
+		if c.origin != "" {
+			r.Header.Set("Origin", c.origin)
+		}
+		if got := s.allowedOrigin(r); got != c.want {
+			t.Errorf("host %q origin %q: got %v, want %v", c.host, c.origin, got, c.want)
+		}
+	}
+}

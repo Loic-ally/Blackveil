@@ -295,11 +295,16 @@ func (s *Server) sameOrigin(next http.Handler) http.Handler {
 	})
 }
 func (s *Server) checkOrigin(w http.ResponseWriter, r *http.Request) bool {
-	if r.Header.Get("Origin") != s.publicOrigin {
+	if !s.allowedOrigin(r) {
 		writeJSON(w, 403, map[string]string{"error": "request origin rejected"})
 		return false
 	}
 	return true
+}
+
+func (s *Server) allowedOrigin(r *http.Request) bool {
+	origin := r.Header.Get("Origin")
+	return origin != "" && (origin == s.publicOrigin || origin == "https://"+r.Host)
 }
 
 func (s *Server) me(w http.ResponseWriter, r *http.Request) {

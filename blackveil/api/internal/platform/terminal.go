@@ -17,7 +17,7 @@ func (s *Server) terminal(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusForbidden, map[string]string{"error": "Linux lab access is not enabled for this identity"})
 		return
 	}
-	if r.Header.Get("Origin") != s.publicOrigin {
+	if !s.allowedOrigin(r) {
 		writeJSON(w, http.StatusForbidden, map[string]string{"error": "request origin rejected"})
 		return
 	}
@@ -91,7 +91,7 @@ func (s *Server) terminal(w http.ResponseWriter, r *http.Request) {
 		HandshakeTimeout: 5 * time.Second,
 		ReadBufferSize:   1024,
 		WriteBufferSize:  1024,
-		CheckOrigin:      func(request *http.Request) bool { return request.Header.Get("Origin") == s.publicOrigin },
+		CheckOrigin:      s.allowedOrigin,
 	}
 	connection, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
